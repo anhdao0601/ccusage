@@ -1356,6 +1356,7 @@ export function renderMultiToolDailyTable(
 		compactThreshold: 100,
 		forceCompact: options.compact,
 		minColumnWidths: [10, 8, 18],
+		maxColumnWidths: [10, 8, 34],
 		wideColumns: [2],
 		style: { head: ['cyan'] },
 		dateFormatter: (dateStr: string) =>
@@ -1462,6 +1463,7 @@ export function renderMultiToolMonthlyTable(
 		compactThreshold: 100,
 		forceCompact: options.compact,
 		minColumnWidths: [10, 8, 18],
+		maxColumnWidths: [10, 8, 34],
 		wideColumns: [2],
 		style: { head: ['cyan'] },
 		dateFormatter: (dateStr: string) =>
@@ -1561,6 +1563,7 @@ export function renderMultiToolSessionTable(
 		compactThreshold: 100,
 		forceCompact: options.compact,
 		minColumnWidths: [8, 16, 18],
+		maxColumnWidths: [8, 28, 34],
 		wideColumns: [1, 2],
 		style: { head: ['cyan'] },
 	});

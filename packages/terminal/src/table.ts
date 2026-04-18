@@ -78,6 +78,7 @@ export type TableOptions = {
 	compactThreshold?: number;
 	forceCompact?: boolean;
 	minColumnWidths?: number[];
+	maxColumnWidths?: number[];
 	wideColumns?: number[];
 	logger?: (message: string) => void;
 };
@@ -98,6 +99,7 @@ export class ResponsiveTable {
 	private compactMode = false;
 	private forceCompact: boolean;
 	private minColumnWidths: number[];
+	private maxColumnWidths: number[];
 	private wideColumns: Set<number>;
 	private logger: (message: string) => void;
 
@@ -115,6 +117,7 @@ export class ResponsiveTable {
 		this.compactThreshold = options.compactThreshold ?? 100;
 		this.forceCompact = options.forceCompact ?? false;
 		this.minColumnWidths = options.minColumnWidths ?? [];
+		this.maxColumnWidths = options.maxColumnWidths ?? [];
 		this.wideColumns = new Set(options.wideColumns ?? [1]);
 		this.logger = options.logger ?? console.warn;
 	}
@@ -135,6 +138,76 @@ export class ResponsiveTable {
 	 */
 	private filterRowToCompact(row: TableRow, compactIndices: number[]): TableRow {
 		return compactIndices.map((index) => row[index] ?? '');
+	}
+
+	private getMinimumColumnWidth(index: number, align: TableCellAlign): number {
+		const configuredMinWidth = this.minColumnWidths[index];
+		if (align === 'right') {
+			return configuredMinWidth ?? 10;
+		}
+		if (index === 0) {
+			return configuredMinWidth ?? 10;
+		}
+		if (this.wideColumns.has(index)) {
+			return configuredMinWidth ?? 12;
+		}
+		return configuredMinWidth ?? 6;
+	}
+
+	private fitColumnWidths(
+		columnWidths: number[],
+		colAligns: TableCellAlign[],
+		availableWidth: number,
+	): number[] {
+		const adjustedWidths = [...columnWidths];
+		const minimumWidths = columnWidths.map((_, index) =>
+			this.getMinimumColumnWidth(index, colAligns[index] ?? 'left'),
+		);
+
+		let overflow = adjustedWidths.reduce((sum, width) => sum + width, 0) - availableWidth;
+		if (overflow <= 0) {
+			return adjustedWidths;
+		}
+
+		const shrinkPriorityGroups = [
+			adjustedWidths.map((_, index) => index).filter((index) => this.wideColumns.has(index)),
+			adjustedWidths
+				.map((_, index) => index)
+				.filter(
+					(index) =>
+						!this.wideColumns.has(index) && index !== 0 && (colAligns[index] ?? 'left') !== 'right',
+				),
+			adjustedWidths
+				.map((_, index) => index)
+				.filter((index) => index === 0 && (colAligns[index] ?? 'left') !== 'right'),
+			adjustedWidths
+				.map((_, index) => index)
+				.filter((index) => (colAligns[index] ?? 'left') === 'right'),
+		];
+
+		for (const group of shrinkPriorityGroups) {
+			if (overflow <= 0) {
+				break;
+			}
+
+			let reducedInGroup = true;
+			while (overflow > 0 && reducedInGroup) {
+				reducedInGroup = false;
+				for (const index of group) {
+					if (overflow <= 0) {
+						break;
+					}
+					if (adjustedWidths[index]! <= minimumWidths[index]!) {
+						continue;
+					}
+					adjustedWidths[index] -= 1;
+					overflow -= 1;
+					reducedInGroup = true;
+				}
+			}
+		}
+
+		return adjustedWidths;
 	}
 
 	/**
@@ -231,40 +304,31 @@ export class ResponsiveTable {
 		const columnWidths = contentWidths.map((width, index) => {
 			const align = colAligns[index];
 			const configuredMinWidth = this.minColumnWidths[index];
+			const configuredMaxWidth = this.maxColumnWidths[index];
 			// For numeric columns, ensure generous width to prevent truncation
+			let columnWidth: number;
 			if (align === 'right') {
-				return Math.max(width + 3, configuredMinWidth ?? 11); // At least 11 chars for numbers, +3 padding
+				columnWidth = Math.max(width + 3, configuredMinWidth ?? 11); // At least 11 chars for numbers, +3 padding
 			} else if (this.wideColumns.has(index)) {
 				// Explicitly marked wide columns such as Models or Session labels.
-				return Math.max(width + 2, configuredMinWidth ?? 15);
+				columnWidth = Math.max(width + 2, configuredMinWidth ?? 15);
+			} else {
+				columnWidth = Math.max(width + 2, configuredMinWidth ?? 6); // Other columns
 			}
-			return Math.max(width + 2, configuredMinWidth ?? 6); // Other columns
+
+			if (configuredMaxWidth != null) {
+				return Math.min(columnWidth, configuredMaxWidth);
+			}
+
+			return columnWidth;
 		});
 
 		// Check if this fits in the terminal
 		const totalRequiredWidth = columnWidths.reduce((sum, width) => sum + width, 0) + tableOverhead;
 
 		if (totalRequiredWidth > terminalWidth) {
-			// Apply responsive resizing and use compact date format if available
-			const scaleFactor = availableWidth / columnWidths.reduce((sum, width) => sum + width, 0);
-			const adjustedWidths = columnWidths.map((width, index) => {
-				const align = colAligns[index];
-				const configuredMinWidth = this.minColumnWidths[index];
-				let adjustedWidth = Math.floor(width * scaleFactor);
-
-				// Apply minimum widths based on column type
-				if (align === 'right') {
-					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 10);
-				} else if (index === 0) {
-					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 10);
-				} else if (this.wideColumns.has(index)) {
-					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 12);
-				} else {
-					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 6);
-				}
-
-				return adjustedWidth;
-			});
+			// Prefer shrinking wrap-friendly text columns before numeric columns.
+			const adjustedWidths = this.fitColumnWidths(columnWidths, colAligns, availableWidth);
 
 			const table = new Table({
 				head,
@@ -861,6 +925,24 @@ if (import.meta.vitest != null) {
 		});
 
 		describe('toString with mocked terminal widths', () => {
+			it('shrinks wide text columns before right-aligned numeric columns', () => {
+				const table = new ResponsiveTable({
+					head: ['Date', 'Source', 'Models', 'Input', 'Output', 'Total Tokens', 'Cost'],
+					colAligns: ['left', 'left', 'left', 'right', 'right', 'right', 'right'],
+					minColumnWidths: [10, 8, 18],
+					wideColumns: [2],
+				});
+
+				// eslint-disable-next-line ts/no-unsafe-assignment, ts/no-unsafe-call, ts/no-unsafe-member-access
+				const fittedWidths = (table as any).fitColumnWidths(
+					[10, 8, 60, 14, 14, 16, 10],
+					['left', 'left', 'left', 'right', 'right', 'right', 'right'],
+					90,
+				);
+
+				expect(fittedWidths).toEqual([10, 8, 18, 14, 14, 16, 10]);
+			});
+
 			it('should filter columns in compact mode', () => {
 				const table = new ResponsiveTable({
 					head: ['Date', 'Model', 'Input', 'Output', 'Cost'],
