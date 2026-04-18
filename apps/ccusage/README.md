@@ -19,6 +19,17 @@
 
 > Analyze your Claude Code token usage and costs from local JSONL files — incredibly fast and informative!
 
+## Fork Note
+
+This repo is a slopfork of `ccusage` with a few additions for my own workflow.
+
+The main differences from upstream are:
+
+- multi-provider reporting so I can look at Claude, Codex, OpenCode, Pi, and Amp usage in one place
+- extra caching/indexing work so local reports stay usable even when I have far too many old sessions
+
+Upstream `ccusage` is still the base project; this fork just optimizes for my "too many sessions and too many agent providers at the same time" use case.
+
 ## ccusage Family
 
 ### 📊 [ccusage](https://www.npmjs.com/package/ccusage) - Claude Code Usage Analyzer

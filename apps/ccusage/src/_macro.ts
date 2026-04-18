@@ -6,10 +6,16 @@ import {
 } from '@ccusage/internal/pricing-fetch-utils';
 
 function isClaudeModel(modelName: string, _pricing: LiteLLMModelPricing): boolean {
+	const normalized = modelName.toLowerCase();
+
 	return (
-		modelName.startsWith('claude-') ||
-		modelName.startsWith('anthropic.claude-') ||
-		modelName.startsWith('anthropic/claude-')
+		normalized.startsWith('claude-') ||
+		normalized.startsWith('anthropic.claude-') ||
+		normalized.startsWith('anthropic/claude-') ||
+		normalized.startsWith('global.anthropic.claude-') ||
+		normalized.startsWith('us.anthropic.claude-') ||
+		normalized.startsWith('eu.anthropic.claude-') ||
+		normalized.startsWith('au.anthropic.claude-')
 	);
 }
 

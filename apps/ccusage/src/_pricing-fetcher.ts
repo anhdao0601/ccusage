@@ -13,15 +13,47 @@ const CLAUDE_PROVIDER_PREFIXES = [
 	'claude-',
 	'openrouter/openai/',
 ];
+const CLAUDE_CACHE_ALIAS_PREFIXES = [
+	'anthropic/',
+	'global.anthropic.',
+	'us.anthropic.',
+	'eu.anthropic.',
+	'au.anthropic.',
+];
 
 const PREFETCHED_CLAUDE_PRICING = prefetchClaudePricing();
 
-async function loadCachedPricing(): Promise<Record<string, LiteLLMModelPricing>> {
-	const cachedPricing = await readPricingCache();
-	if (cachedPricing != null) {
-		return cachedPricing;
+function createCachedPricingAliases(
+	cachedPricing: Record<string, LiteLLMModelPricing>,
+): Record<string, LiteLLMModelPricing> {
+	const aliases: Record<string, LiteLLMModelPricing> = {};
+
+	for (const [modelName, pricing] of Object.entries(cachedPricing)) {
+		for (const prefix of CLAUDE_CACHE_ALIAS_PREFIXES) {
+			if (!modelName.startsWith(prefix)) {
+				continue;
+			}
+
+			aliases[modelName.slice(prefix.length)] = pricing;
+			break;
+		}
 	}
-	return PREFETCHED_CLAUDE_PRICING;
+
+	return aliases;
+}
+
+async function loadCachedPricing(): Promise<Record<string, LiteLLMModelPricing>> {
+	const prefetchedPricing = await PREFETCHED_CLAUDE_PRICING;
+	const cachedPricing = await readPricingCache();
+	if (cachedPricing == null) {
+		return prefetchedPricing;
+	}
+
+	return {
+		...prefetchedPricing,
+		...cachedPricing,
+		...createCachedPricingAliases(cachedPricing),
+	};
 }
 
 export class PricingFetcher extends LiteLLMPricingFetcher {

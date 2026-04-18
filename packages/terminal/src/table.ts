@@ -77,6 +77,8 @@ export type TableOptions = {
 	compactColAligns?: TableCellAlign[];
 	compactThreshold?: number;
 	forceCompact?: boolean;
+	minColumnWidths?: number[];
+	wideColumns?: number[];
 	logger?: (message: string) => void;
 };
 
@@ -95,6 +97,8 @@ export class ResponsiveTable {
 	private compactThreshold: number;
 	private compactMode = false;
 	private forceCompact: boolean;
+	private minColumnWidths: number[];
+	private wideColumns: Set<number>;
 	private logger: (message: string) => void;
 
 	/**
@@ -110,6 +114,8 @@ export class ResponsiveTable {
 		this.compactColAligns = options.compactColAligns;
 		this.compactThreshold = options.compactThreshold ?? 100;
 		this.forceCompact = options.forceCompact ?? false;
+		this.minColumnWidths = options.minColumnWidths ?? [];
+		this.wideColumns = new Set(options.wideColumns ?? [1]);
 		this.logger = options.logger ?? console.warn;
 	}
 
@@ -224,14 +230,15 @@ export class ResponsiveTable {
 		// Always use content-based widths with generous padding for numeric columns
 		const columnWidths = contentWidths.map((width, index) => {
 			const align = colAligns[index];
+			const configuredMinWidth = this.minColumnWidths[index];
 			// For numeric columns, ensure generous width to prevent truncation
 			if (align === 'right') {
-				return Math.max(width + 3, 11); // At least 11 chars for numbers, +3 padding
-			} else if (index === 1) {
-				// Models column - can be longer
-				return Math.max(width + 2, 15);
+				return Math.max(width + 3, configuredMinWidth ?? 11); // At least 11 chars for numbers, +3 padding
+			} else if (this.wideColumns.has(index)) {
+				// Explicitly marked wide columns such as Models or Session labels.
+				return Math.max(width + 2, configuredMinWidth ?? 15);
 			}
-			return Math.max(width + 2, 10); // Other columns
+			return Math.max(width + 2, configuredMinWidth ?? 6); // Other columns
 		});
 
 		// Check if this fits in the terminal
@@ -242,17 +249,18 @@ export class ResponsiveTable {
 			const scaleFactor = availableWidth / columnWidths.reduce((sum, width) => sum + width, 0);
 			const adjustedWidths = columnWidths.map((width, index) => {
 				const align = colAligns[index];
+				const configuredMinWidth = this.minColumnWidths[index];
 				let adjustedWidth = Math.floor(width * scaleFactor);
 
 				// Apply minimum widths based on column type
 				if (align === 'right') {
-					adjustedWidth = Math.max(adjustedWidth, 10);
+					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 10);
 				} else if (index === 0) {
-					adjustedWidth = Math.max(adjustedWidth, 10);
-				} else if (index === 1) {
-					adjustedWidth = Math.max(adjustedWidth, 12);
+					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 10);
+				} else if (this.wideColumns.has(index)) {
+					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 12);
 				} else {
-					adjustedWidth = Math.max(adjustedWidth, 8);
+					adjustedWidth = Math.max(adjustedWidth, configuredMinWidth ?? 6);
 				}
 
 				return adjustedWidth;

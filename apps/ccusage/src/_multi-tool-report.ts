@@ -275,7 +275,7 @@ function normalizeCodexRowUsage(
 
 function createMultiToolReport<Row extends RowMetrics & { source: ToolName }>(
 	rows: Row[],
-	tools: readonly ToolName[],
+	_tools: readonly ToolName[],
 ): MultiToolReport<Row> {
 	const totals = createEmptyMetrics();
 	const totalsBySource: Partial<Record<ToolName, MutableMetrics>> = {};
@@ -293,8 +293,8 @@ function createMultiToolReport<Row extends RowMetrics & { source: ToolName }>(
 		totalsBySource: Object.fromEntries(
 			Object.entries(totalsBySource).map(([source, metrics]) => [source, toRowMetrics(metrics)]),
 		) as Partial<Record<ToolName, RowMetrics>>,
-		includeReasoning: tools.includes('codex'),
-		includeCredits: tools.includes('amp'),
+		includeReasoning: rows.some((row) => (row.reasoningOutputTokens ?? 0) > 0),
+		includeCredits: rows.some((row) => (row.credits ?? 0) > 0),
 	};
 }
 
@@ -1355,6 +1355,8 @@ export function renderMultiToolDailyTable(
 		compactColAligns,
 		compactThreshold: 100,
 		forceCompact: options.compact,
+		minColumnWidths: [10, 8, 18],
+		wideColumns: [2],
 		style: { head: ['cyan'] },
 		dateFormatter: (dateStr: string) =>
 			formatDateCompact(dateStr, options.timezone, options.locale ?? undefined),
@@ -1459,6 +1461,8 @@ export function renderMultiToolMonthlyTable(
 		compactColAligns,
 		compactThreshold: 100,
 		forceCompact: options.compact,
+		minColumnWidths: [10, 8, 18],
+		wideColumns: [2],
 		style: { head: ['cyan'] },
 		dateFormatter: (dateStr: string) =>
 			formatDateCompact(`${dateStr}-01`, options.timezone, options.locale ?? undefined),
@@ -1556,6 +1560,8 @@ export function renderMultiToolSessionTable(
 		compactColAligns,
 		compactThreshold: 100,
 		forceCompact: options.compact,
+		minColumnWidths: [8, 16, 18],
+		wideColumns: [1, 2],
 		style: { head: ['cyan'] },
 	});
 
