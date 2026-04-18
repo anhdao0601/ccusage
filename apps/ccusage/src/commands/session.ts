@@ -13,7 +13,14 @@ import { loadConfig, mergeConfigWithArgs } from '../_config-loader-tokens.ts';
 import { DEFAULT_LOCALE } from '../_consts.ts';
 import { formatDateCompact } from '../_date-utils.ts';
 import { processWithJq } from '../_jq-processor.ts';
+import { loadMultiToolSessionReport, renderMultiToolSessionTable } from '../_multi-tool-report.ts';
+import {
+	getClaudeReportSources,
+	getMultiToolReportSources,
+	withReportCache,
+} from '../_report-cache.ts';
 import { sharedCommandConfig } from '../_shared-args.ts';
+import { hasExplicitToolSelection, normalizeToolSelection } from '../_tool-selection.ts';
 import { calculateTotals, createTotalsObject, getTotalTokens } from '../calculate-cost.ts';
 import { loadSessionData } from '../data-loader.ts';
 import { detectMismatches, printMismatchReport } from '../debug.ts';
@@ -47,6 +54,14 @@ export const sessionCommand = define({
 			logger.level = 0;
 		}
 
+		if (mergedOptions.id != null && hasExplicitToolSelection(mergedOptions.tool)) {
+			const tools = normalizeToolSelection(mergedOptions.tool);
+			if (tools.length !== 1 || tools[0] !== 'claude') {
+				logger.error('`session --id` is only supported in Claude-only mode.');
+				process.exit(1);
+			}
+		}
+
 		// Handle specific session ID lookup
 		if (mergedOptions.id != null) {
 			return handleSessionIdLookup(
@@ -55,6 +70,7 @@ export const sessionCommand = define({
 						id: mergedOptions.id,
 						mode: mergedOptions.mode,
 						offline: mergedOptions.offline,
+						updatePricing: mergedOptions.updatePricing,
 						jq: mergedOptions.jq,
 						timezone: mergedOptions.timezone,
 						locale: mergedOptions.locale ?? DEFAULT_LOCALE,
@@ -64,14 +80,111 @@ export const sessionCommand = define({
 			);
 		}
 
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			const tools = normalizeToolSelection(mergedOptions.tool);
+			const report = await withReportCache({
+				command: 'session',
+				parameters: {
+					mode: 'multi-tool',
+					tools,
+					since: mergedOptions.since,
+					until: mergedOptions.until,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale,
+					offline: Boolean(mergedOptions.offline),
+					updatePricing: Boolean(mergedOptions.updatePricing),
+				},
+				sources: getMultiToolReportSources('session', { tools }),
+				pricing: {
+					requiresPricing: tools.some((tool) => tool !== 'pi'),
+					offline: mergedOptions.offline,
+					updatePricing: mergedOptions.updatePricing,
+				},
+				load: async () =>
+					loadMultiToolSessionReport({
+						tools,
+						since: mergedOptions.since,
+						until: mergedOptions.until,
+						timezone: mergedOptions.timezone,
+						locale: mergedOptions.locale,
+						offline: mergedOptions.offline,
+						updatePricing: mergedOptions.updatePricing,
+					}),
+			});
+
+			if (report.rows.length === 0) {
+				const emptyOutput = {
+					sessions: [],
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+				if (useJson) {
+					log(JSON.stringify(emptyOutput, null, 2));
+				} else {
+					logger.warn('No usage data found for the selected tools.');
+				}
+				process.exit(0);
+			}
+
+			if (useJson) {
+				const jsonOutput = {
+					sessions: report.rows,
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+
+				if (mergedOptions.jq != null) {
+					const jqResult = await processWithJq(jsonOutput, mergedOptions.jq);
+					if (Result.isFailure(jqResult)) {
+						logger.error(jqResult.error.message);
+						process.exit(1);
+					}
+					log(jqResult.value);
+				} else {
+					log(JSON.stringify(jsonOutput, null, 2));
+				}
+				return;
+			}
+
+			logger.box('Multi-Tool Token Usage Report - Session');
+			log(
+				renderMultiToolSessionTable(report, {
+					compact: mergedOptions.compact,
+					breakdown: mergedOptions.breakdown,
+				}),
+			);
+			return;
+		}
+
 		// Original session listing logic
-		const sessionData = await loadSessionData({
-			since: ctx.values.since,
-			until: ctx.values.until,
-			mode: ctx.values.mode,
-			offline: ctx.values.offline,
-			timezone: ctx.values.timezone,
-			locale: ctx.values.locale,
+		const sessionData = await withReportCache({
+			command: 'session',
+			parameters: {
+				mode: 'claude',
+				since: mergedOptions.since,
+				until: mergedOptions.until,
+				timezone: mergedOptions.timezone,
+				locale: mergedOptions.locale,
+				costMode: mergedOptions.mode,
+				offline: Boolean(mergedOptions.offline),
+				updatePricing: Boolean(mergedOptions.updatePricing),
+			},
+			sources: getClaudeReportSources(),
+			pricing: {
+				requiresPricing: mergedOptions.mode !== 'display',
+				offline: mergedOptions.offline,
+				updatePricing: mergedOptions.updatePricing,
+			},
+			load: async () =>
+				loadSessionData({
+					since: mergedOptions.since,
+					until: mergedOptions.until,
+					mode: mergedOptions.mode,
+					offline: mergedOptions.offline,
+					updatePricing: mergedOptions.updatePricing,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale,
+				}),
 		});
 
 		if (sessionData.length === 0) {
@@ -87,9 +200,13 @@ export const sessionCommand = define({
 		const totals = calculateTotals(sessionData);
 
 		// Show debug information if requested
-		if (ctx.values.debug && !useJson) {
-			const mismatchStats = await detectMismatches(undefined);
-			printMismatchReport(mismatchStats, ctx.values.debugSamples);
+		if (mergedOptions.debug && !useJson) {
+			const mismatchStats = await detectMismatches(
+				undefined,
+				Boolean(mergedOptions.offline),
+				Boolean(mergedOptions.updatePricing),
+			);
+			printMismatchReport(mismatchStats, mergedOptions.debugSamples);
 		}
 
 		if (useJson) {
@@ -112,8 +229,8 @@ export const sessionCommand = define({
 			};
 
 			// Process with jq if specified
-			if (ctx.values.jq != null) {
-				const jqResult = await processWithJq(jsonOutput, ctx.values.jq);
+			if (mergedOptions.jq != null) {
+				const jqResult = await processWithJq(jsonOutput, mergedOptions.jq);
 				if (Result.isFailure(jqResult)) {
 					logger.error(jqResult.error.message);
 					process.exit(1);
@@ -131,8 +248,8 @@ export const sessionCommand = define({
 				firstColumnName: 'Session',
 				includeLastActivity: true,
 				dateFormatter: (dateStr: string) =>
-					formatDateCompact(dateStr, ctx.values.timezone, ctx.values.locale),
-				forceCompact: ctx.values.compact,
+					formatDateCompact(dateStr, mergedOptions.timezone, mergedOptions.locale),
+				forceCompact: mergedOptions.compact,
 			};
 			const table = createUsageReportTable(tableConfig);
 
@@ -159,7 +276,7 @@ export const sessionCommand = define({
 				table.push(row);
 
 				// Add model breakdown rows if flag is set
-				if (ctx.values.breakdown) {
+				if (mergedOptions.breakdown) {
 					// Session has 1 extra column before data and 1 trailing column
 					pushBreakdownRows(table, data.modelBreakdowns, 1, 1);
 				}

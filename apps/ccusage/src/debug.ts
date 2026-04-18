@@ -18,6 +18,7 @@ import {
 	DEBUG_MATCH_THRESHOLD_PERCENT,
 	USAGE_DATA_GLOB_PATTERN,
 } from './_consts.ts';
+import { writePricingCache } from './_pricing-cache.ts';
 import { PricingFetcher } from './_pricing-fetcher.ts';
 import { getClaudePaths, usageDataSchema } from './data-loader.ts';
 import { logger } from './logger.ts';
@@ -74,9 +75,15 @@ type MismatchStats = {
  * Analyzes usage data to detect pricing mismatches between stored and calculated costs
  * Compares pre-calculated costUSD values with costs calculated from token usage
  * @param claudePath - Optional path to Claude data directory
+ * @param offline - Whether to disable network pricing refresh
+ * @param updatePricing - Whether to refresh pricing from LiteLLM
  * @returns Statistics about pricing mismatches found
  */
-export async function detectMismatches(claudePath?: string): Promise<MismatchStats> {
+export async function detectMismatches(
+	claudePath?: string,
+	offline = false,
+	updatePricing = false,
+): Promise<MismatchStats> {
 	let claudeDir: string;
 	if (claudePath != null && claudePath !== '') {
 		claudeDir = claudePath;
@@ -93,7 +100,7 @@ export async function detectMismatches(claudePath?: string): Promise<MismatchSta
 	});
 
 	// Use PricingFetcher with using statement for automatic cleanup
-	using fetcher = new PricingFetcher();
+	using fetcher = new PricingFetcher(offline, updatePricing);
 
 	const stats: MismatchStats = {
 		totalEntries: 0,
@@ -293,6 +300,40 @@ export function printMismatchReport(stats: MismatchStats, sampleCount = 5): void
 if (import.meta.vitest != null) {
 	describe('debug.ts', () => {
 		describe('detectMismatches', () => {
+			let pricingCacheFixture: Awaited<ReturnType<typeof createFixture>> | undefined;
+
+			beforeEach(async () => {
+				pricingCacheFixture = await createFixture({});
+				vi.stubEnv('XDG_CACHE_HOME', pricingCacheFixture.path);
+				await writePricingCache(
+					{
+						'anthropic/claude-sonnet-4-20250514': {
+							input_cost_per_token: 3e-6,
+							output_cost_per_token: 1.5e-5,
+							cache_creation_input_token_cost: 3.75e-6,
+							cache_read_input_token_cost: 3e-7,
+						},
+						'anthropic/claude-opus-4-20250514': {
+							input_cost_per_token: 1.5e-5,
+							output_cost_per_token: 7.5e-5,
+							cache_creation_input_token_cost: 1.875e-5,
+							cache_read_input_token_cost: 1.5e-6,
+						},
+					},
+					{
+						fetchedAt: new Date().toISOString(),
+					},
+				);
+			});
+
+			afterEach(async () => {
+				PricingFetcher.clearSharedCaches();
+				vi.unstubAllEnvs();
+				vi.restoreAllMocks();
+				await pricingCacheFixture?.[Symbol.asyncDispose]?.();
+				pricingCacheFixture = undefined;
+			});
+
 			it('should detect no mismatches when costs match', async () => {
 				await using fixture = await createFixture({
 					'test.jsonl': JSON.stringify({

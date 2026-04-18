@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import readline from 'node:readline';
+import { mapWithConcurrency } from '@ccusage/internal/concurrency';
 import { glob } from 'tinyglobby';
 import * as v from 'valibot';
 import {
@@ -9,6 +10,8 @@ import {
 	piAgentMessageSchema,
 	transformPiAgentUsage,
 } from './_pi-agent.ts';
+
+const FILE_LOAD_CONCURRENCY = 8;
 
 export type Source = 'claude-code' | 'pi-agent';
 
@@ -160,12 +163,10 @@ export async function loadPiAgentData(options?: LoadOptions): Promise<EntryData[
 		return [];
 	}
 
-	const processedHashes = new Set<string>();
-	const entries: EntryData[] = [];
-
-	for (const file of files) {
+	const perFileEntries = await mapWithConcurrency(files, FILE_LOAD_CONCURRENCY, async (file) => {
 		const project = extractPiAgentProject(file);
 		const sessionId = extractPiAgentSessionId(file);
+		const fileEntries: EntryData[] = [];
 
 		await processJSONLFileByLine(file, (line) => {
 			try {
@@ -181,13 +182,7 @@ export async function loadPiAgentData(options?: LoadOptions): Promise<EntryData[
 					return;
 				}
 
-				const hash = `pi:${data.timestamp}:${transformed.totalTokens}`;
-				if (processedHashes.has(hash)) {
-					return;
-				}
-				processedHashes.add(hash);
-
-				entries.push({
+				fileEntries.push({
 					timestamp: data.timestamp,
 					model: transformed.model,
 					inputTokens: transformed.usage.input_tokens,
@@ -202,6 +197,19 @@ export async function loadPiAgentData(options?: LoadOptions): Promise<EntryData[
 				// Skip invalid lines
 			}
 		});
+		return fileEntries;
+	});
+
+	const processedHashes = new Set<string>();
+	const entries: EntryData[] = [];
+
+	for (const entry of perFileEntries.flat()) {
+		const hash = `pi:${entry.timestamp}:${entry.sessionId}:${entry.inputTokens}:${entry.outputTokens}:${entry.cacheCreationTokens}:${entry.cacheReadTokens}`;
+		if (processedHashes.has(hash)) {
+			continue;
+		}
+		processedHashes.add(hash);
+		entries.push(entry);
 	}
 
 	return entries;

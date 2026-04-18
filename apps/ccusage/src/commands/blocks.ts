@@ -25,6 +25,11 @@ import {
 } from '../_session-blocks.ts';
 import { sharedCommandConfig } from '../_shared-args.ts';
 import { getTotalTokens } from '../_token-utils.ts';
+import {
+	assertClaudeOnlyTools,
+	hasExplicitToolSelection,
+	normalizeToolSelection,
+} from '../_tool-selection.ts';
 import { loadSessionBlockData } from '../data-loader.ts';
 import { log, logger } from '../logger.ts';
 
@@ -158,6 +163,10 @@ export const blocksCommand = define({
 			logger.level = 0;
 		}
 
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			assertClaudeOnlyTools(normalizeToolSelection(mergedOptions.tool), 'blocks');
+		}
+
 		// Validate session length
 		if (ctx.values.sessionLength <= 0) {
 			logger.error('Session length must be a positive number');
@@ -165,14 +174,15 @@ export const blocksCommand = define({
 		}
 
 		let blocks = await loadSessionBlockData({
-			since: ctx.values.since,
-			until: ctx.values.until,
-			mode: ctx.values.mode,
-			order: ctx.values.order,
-			offline: ctx.values.offline,
-			sessionDurationHours: ctx.values.sessionLength,
-			timezone: ctx.values.timezone,
-			locale: ctx.values.locale,
+			since: mergedOptions.since,
+			until: mergedOptions.until,
+			mode: mergedOptions.mode,
+			order: mergedOptions.order,
+			offline: mergedOptions.offline,
+			updatePricing: mergedOptions.updatePricing,
+			sessionDurationHours: mergedOptions.sessionLength,
+			timezone: mergedOptions.timezone,
+			locale: mergedOptions.locale,
 		});
 
 		if (blocks.length === 0) {

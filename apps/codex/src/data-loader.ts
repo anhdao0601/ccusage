@@ -1,17 +1,22 @@
 import type { TokenUsageDelta, TokenUsageEvent } from './_types.ts';
-import { readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { createInterface } from 'node:readline';
+import { mapWithConcurrency } from '@ccusage/internal/concurrency';
 import { Result } from '@praha/byethrow';
 import { createFixture } from 'fs-fixture';
 import { glob } from 'tinyglobby';
 import * as v from 'valibot';
 import {
 	CODEX_HOME_ENV,
+	DEFAULT_ARCHIVED_SESSION_SUBDIR,
 	DEFAULT_CODEX_DIR,
 	DEFAULT_SESSION_SUBDIR,
 	SESSION_GLOB,
 } from './_consts.ts';
+import { createSessionIndexEntry, readSessionIndex, writeSessionIndex } from './_session-index.ts';
 import { logger } from './logger.ts';
 
 type RawUsage = {
@@ -103,6 +108,8 @@ function convertToDelta(raw: RawUsage): TokenUsageDelta {
 
 const recordSchema = v.record(v.string(), v.unknown());
 const LEGACY_FALLBACK_MODEL = 'gpt-5';
+const FORK_BOOTSTRAP_MARKER = 'You are the newly spawned agent.';
+const SESSION_FILE_LOAD_CONCURRENCY = 8;
 
 const entrySchema = v.object({
 	type: v.string(),
@@ -113,6 +120,14 @@ const entrySchema = v.object({
 const tokenCountPayloadSchema = v.object({
 	type: v.literal('token_count'),
 	info: v.optional(recordSchema),
+});
+
+const userMessagePayloadSchema = v.object({
+	type: v.literal('user_message'),
+});
+
+const sessionMetaPayloadSchema = v.object({
+	forked_from_id: v.optional(v.string()),
 });
 
 function extractModel(value: unknown): string | undefined {
@@ -184,6 +199,257 @@ export type LoadResult = {
 	missingDirectories: string[];
 };
 
+type SessionDirectorySource = {
+	path: string;
+	reportMissing: boolean;
+};
+
+type SessionFileCandidate = {
+	file: string;
+	sessionId: string;
+	size: number;
+	mtimeMs: number;
+};
+
+function extractEntryModelFromParsedEntry(
+	entry: v.InferOutput<typeof entrySchema>,
+): string | undefined {
+	if (entry.type === 'turn_context') {
+		const payloadRecord = v.safeParse(recordSchema, entry.payload ?? null);
+		if (payloadRecord.success) {
+			return extractModel(payloadRecord.output);
+		}
+
+		return undefined;
+	}
+
+	if (entry.payload == null) {
+		return undefined;
+	}
+
+	const payloadRecord = v.safeParse(recordSchema, entry.payload);
+	if (!payloadRecord.success) {
+		return undefined;
+	}
+
+	const infoRecord = v.safeParse(recordSchema, payloadRecord.output.info ?? null);
+	const extractionSource = infoRecord.success
+		? Object.assign({}, payloadRecord.output, { info: infoRecord.output })
+		: payloadRecord.output;
+
+	return extractModel(extractionSource);
+}
+
+type SessionProcessingResult = {
+	events: TokenUsageEvent[];
+	legacyFallbackUsed: boolean;
+	retryReason?: 'missing_bootstrap' | 'missing_child_user';
+	forkedFromId?: string;
+};
+
+async function processSessionStream(
+	file: string,
+	sessionId: string,
+	forceFullTranscript = false,
+): Promise<SessionProcessingResult> {
+	const fileStream = createReadStream(file, { encoding: 'utf8' });
+	const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
+
+	const events: TokenUsageEvent[] = [];
+	let previousTotals: RawUsage | null = null;
+	let currentModel: string | undefined;
+	let currentModelIsFallback = false;
+	let legacyFallbackUsed = false;
+	let lineNumber = 0;
+	let forkedFromId: string | undefined;
+	let isForkedSession = false;
+	let activated = forceFullTranscript;
+	let sawBootstrapMarker = false;
+	let sawChildUserMessage = false;
+	let lastModelBeforeActivation: string | undefined;
+
+	for await (const line of rl) {
+		lineNumber += 1;
+		const trimmed = line.trim();
+		if (trimmed === '') {
+			continue;
+		}
+
+		const parseLine = Result.try({
+			try: () => JSON.parse(trimmed) as unknown,
+			catch: (error) => error,
+		});
+		const parsedResult = parseLine();
+		if (Result.isFailure(parsedResult)) {
+			continue;
+		}
+
+		const entryParse = v.safeParse(entrySchema, parsedResult.value);
+		if (!entryParse.success) {
+			continue;
+		}
+
+		const entry = entryParse.output;
+		if (lineNumber === 1 && entry.type === 'session_meta') {
+			const sessionMetaPayload = v.safeParse(sessionMetaPayloadSchema, entry.payload ?? null);
+			forkedFromId = sessionMetaPayload.success
+				? asNonEmptyString(sessionMetaPayload.output.forked_from_id)
+				: undefined;
+			isForkedSession = forkedFromId != null;
+		}
+
+		if (isForkedSession && !forceFullTranscript && !activated) {
+			const modelBeforeActivation = extractEntryModelFromParsedEntry(entry);
+			if (modelBeforeActivation != null) {
+				lastModelBeforeActivation = modelBeforeActivation;
+			}
+
+			if (trimmed.includes(FORK_BOOTSTRAP_MARKER)) {
+				sawBootstrapMarker = true;
+			}
+
+			if (
+				sawBootstrapMarker &&
+				entry.type === 'event_msg' &&
+				v.safeParse(userMessagePayloadSchema, entry.payload ?? null).success
+			) {
+				activated = true;
+				sawChildUserMessage = true;
+				currentModel = lastModelBeforeActivation;
+				currentModelIsFallback = false;
+			}
+
+			continue;
+		}
+
+		if (entry.type === 'turn_context') {
+			const contextPayload = v.safeParse(recordSchema, entry.payload ?? null);
+			if (contextPayload.success) {
+				const contextModel = extractModel(contextPayload.output);
+				if (contextModel != null) {
+					currentModel = contextModel;
+					currentModelIsFallback = false;
+				}
+			}
+			continue;
+		}
+
+		if (entry.type !== 'event_msg') {
+			continue;
+		}
+
+		const tokenPayloadResult = v.safeParse(tokenCountPayloadSchema, entry.payload ?? undefined);
+		if (!tokenPayloadResult.success || entry.timestamp == null) {
+			continue;
+		}
+
+		const info = tokenPayloadResult.output.info;
+		const lastUsage = normalizeRawUsage(info?.last_token_usage);
+		const totalUsage = normalizeRawUsage(info?.total_token_usage);
+
+		let raw = lastUsage;
+		if (raw == null && totalUsage != null) {
+			raw = subtractRawUsage(totalUsage, previousTotals);
+		}
+
+		if (totalUsage != null) {
+			previousTotals = totalUsage;
+		}
+
+		if (raw == null) {
+			continue;
+		}
+
+		const delta = convertToDelta(raw);
+		if (
+			delta.inputTokens === 0 &&
+			delta.cachedInputTokens === 0 &&
+			delta.outputTokens === 0 &&
+			delta.reasoningOutputTokens === 0
+		) {
+			continue;
+		}
+
+		const payloadRecordResult = v.safeParse(recordSchema, entry.payload ?? undefined);
+		const extractionSource = payloadRecordResult.success
+			? Object.assign({}, payloadRecordResult.output, { info })
+			: { info };
+		const extractedModel = extractModel(extractionSource);
+		let isFallbackModel = false;
+		if (extractedModel != null) {
+			currentModel = extractedModel;
+			currentModelIsFallback = false;
+		}
+
+		let model = extractedModel ?? currentModel;
+		if (model == null) {
+			model = LEGACY_FALLBACK_MODEL;
+			isFallbackModel = true;
+			legacyFallbackUsed = true;
+			currentModel = model;
+			currentModelIsFallback = true;
+		} else if (extractedModel == null && currentModelIsFallback) {
+			isFallbackModel = true;
+		}
+
+		const event: TokenUsageEvent = {
+			sessionId,
+			timestamp: entry.timestamp,
+			model,
+			inputTokens: delta.inputTokens,
+			cachedInputTokens: delta.cachedInputTokens,
+			outputTokens: delta.outputTokens,
+			reasoningOutputTokens: delta.reasoningOutputTokens,
+			totalTokens: delta.totalTokens,
+		};
+
+		if (isFallbackModel) {
+			event.isFallbackModel = true;
+		}
+
+		events.push(event);
+	}
+
+	if (isForkedSession && !forceFullTranscript && !activated) {
+		return {
+			events: [],
+			legacyFallbackUsed,
+			forkedFromId,
+			retryReason:
+				sawBootstrapMarker || sawChildUserMessage ? 'missing_child_user' : 'missing_bootstrap',
+		};
+	}
+
+	return { events, legacyFallbackUsed };
+}
+
+async function loadEventsFromSessionFile(
+	file: string,
+	sessionId: string,
+): Promise<SessionProcessingResult> {
+	const firstPass = await processSessionStream(file, sessionId, false);
+	if (firstPass.retryReason == null) {
+		return firstPass;
+	}
+
+	if (firstPass.retryReason === 'missing_bootstrap') {
+		logger.debug('Forked Codex session missing bootstrap marker; counting full transcript', {
+			file,
+			forkedFromId: firstPass.forkedFromId,
+		});
+	} else {
+		logger.debug(
+			'Forked Codex session missing post-bootstrap user message; counting full transcript',
+			{
+				file,
+				forkedFromId: firstPass.forkedFromId,
+			},
+		);
+	}
+
+	return processSessionStream(file, sessionId, true);
+}
+
 export async function loadTokenUsageEvents(options: LoadOptions = {}): Promise<LoadResult> {
 	const providedDirs =
 		options.sessionDirs != null && options.sessionDirs.length > 0
@@ -193,26 +459,46 @@ export async function loadTokenUsageEvents(options: LoadOptions = {}): Promise<L
 	const codexHomeEnv = process.env[CODEX_HOME_ENV]?.trim();
 	const codexHome =
 		codexHomeEnv != null && codexHomeEnv !== '' ? path.resolve(codexHomeEnv) : DEFAULT_CODEX_DIR;
-	const defaultSessionsDir = path.join(codexHome, DEFAULT_SESSION_SUBDIR);
-	const sessionDirs = providedDirs ?? [defaultSessionsDir];
+	const sessionDirectories: SessionDirectorySource[] =
+		providedDirs != null
+			? providedDirs.map((dir) => ({ path: dir, reportMissing: true }))
+			: [
+					{
+						path: path.join(codexHome, DEFAULT_SESSION_SUBDIR),
+						reportMissing: true,
+					},
+					{
+						path: path.join(codexHome, DEFAULT_ARCHIVED_SESSION_SUBDIR),
+						reportMissing: false,
+					},
+				];
 
 	const events: TokenUsageEvent[] = [];
 	const missingDirectories: string[] = [];
+	const loadedFiles = new Set<string>();
+	const sessionFiles: Array<{
+		file: string;
+		sessionId: string;
+	}> = [];
 
-	for (const dir of sessionDirs) {
-		const directoryPath = path.resolve(dir);
+	for (const directory of sessionDirectories) {
+		const directoryPath = path.resolve(directory.path);
 		const statResult = await Result.try({
 			try: stat(directoryPath),
 			catch: (error) => error,
 		});
 
 		if (Result.isFailure(statResult)) {
-			missingDirectories.push(directoryPath);
+			if (directory.reportMissing) {
+				missingDirectories.push(directoryPath);
+			}
 			continue;
 		}
 
 		if (!statResult.value.isDirectory()) {
-			missingDirectories.push(directoryPath);
+			if (directory.reportMissing) {
+				missingDirectories.push(directoryPath);
+			}
 			continue;
 		}
 
@@ -222,148 +508,103 @@ export async function loadTokenUsageEvents(options: LoadOptions = {}): Promise<L
 		});
 
 		for (const file of files) {
-			const relativeSessionPath = path.relative(directoryPath, file);
-			const normalizedSessionPath = relativeSessionPath.split(path.sep).join('/');
-			const sessionId = normalizedSessionPath.replace(/\.jsonl$/i, '');
-			const fileContentResult = await Result.try({
-				try: readFile(file, 'utf8'),
-				catch: (error) => error,
-			});
-
-			if (Result.isFailure(fileContentResult)) {
-				logger.debug('Failed to read Codex session file', fileContentResult.error);
+			if (loadedFiles.has(file)) {
 				continue;
 			}
 
-			let previousTotals: RawUsage | null = null;
-			let currentModel: string | undefined;
-			let currentModelIsFallback = false;
-			let legacyFallbackUsed = false;
-			const lines = fileContentResult.value.split(/\r?\n/);
-			for (const line of lines) {
-				const trimmed = line.trim();
-				if (trimmed === '') {
-					continue;
-				}
+			loadedFiles.add(file);
+			const relativeSessionPath = path.relative(directoryPath, file);
+			const normalizedSessionPath = relativeSessionPath.split(path.sep).join('/');
+			const sessionId = normalizedSessionPath.replace(/\.jsonl$/i, '');
+			sessionFiles.push({ file, sessionId });
+		}
+	}
 
-				const parseLine = Result.try({
-					try: () => JSON.parse(trimmed) as unknown,
+	const indexedEntries = await readSessionIndex();
+	const sessionCandidates = (
+		await mapWithConcurrency(
+			sessionFiles,
+			SESSION_FILE_LOAD_CONCURRENCY,
+			async ({ file, sessionId }) => {
+				const fileStat = await Result.try({
+					try: stat(file),
 					catch: (error) => error,
 				});
-				const parsedResult = parseLine();
-
-				if (Result.isFailure(parsedResult)) {
-					continue;
+				if (Result.isFailure(fileStat) || !fileStat.value.isFile()) {
+					return null;
 				}
 
-				const entryParse = v.safeParse(entrySchema, parsedResult.value);
-				if (!entryParse.success) {
-					continue;
-				}
-
-				const { type: entryType, payload, timestamp } = entryParse.output;
-
-				if (entryType === 'turn_context') {
-					const contextPayload = v.safeParse(recordSchema, payload ?? null);
-					if (contextPayload.success) {
-						const contextModel = extractModel(contextPayload.output);
-						if (contextModel != null) {
-							currentModel = contextModel;
-							currentModelIsFallback = false;
-						}
-					}
-					continue;
-				}
-
-				if (entryType !== 'event_msg') {
-					continue;
-				}
-
-				const tokenPayloadResult = v.safeParse(tokenCountPayloadSchema, payload ?? undefined);
-				if (!tokenPayloadResult.success) {
-					continue;
-				}
-
-				if (timestamp == null) {
-					continue;
-				}
-
-				const info = tokenPayloadResult.output.info;
-				const lastUsage = normalizeRawUsage(info?.last_token_usage);
-				const totalUsage = normalizeRawUsage(info?.total_token_usage);
-
-				let raw = lastUsage;
-				if (raw == null && totalUsage != null) {
-					raw = subtractRawUsage(totalUsage, previousTotals);
-				}
-
-				if (totalUsage != null) {
-					previousTotals = totalUsage;
-				}
-
-				if (raw == null) {
-					continue;
-				}
-
-				const delta = convertToDelta(raw);
-				if (
-					delta.inputTokens === 0 &&
-					delta.cachedInputTokens === 0 &&
-					delta.outputTokens === 0 &&
-					delta.reasoningOutputTokens === 0
-				) {
-					continue;
-				}
-
-				const payloadRecordResult = v.safeParse(recordSchema, payload ?? undefined);
-				const extractionSource = payloadRecordResult.success
-					? Object.assign({}, payloadRecordResult.output, { info })
-					: { info };
-				const extractedModel = extractModel(extractionSource);
-				let isFallbackModel = false;
-				if (extractedModel != null) {
-					currentModel = extractedModel;
-					currentModelIsFallback = false;
-				}
-
-				let model = extractedModel ?? currentModel;
-				if (model == null) {
-					model = LEGACY_FALLBACK_MODEL;
-					isFallbackModel = true;
-					legacyFallbackUsed = true;
-					currentModel = model;
-					currentModelIsFallback = true;
-				} else if (extractedModel == null && currentModelIsFallback) {
-					isFallbackModel = true;
-				}
-
-				const event: TokenUsageEvent = {
-					sessionId,
-					timestamp,
-					model,
-					inputTokens: delta.inputTokens,
-					cachedInputTokens: delta.cachedInputTokens,
-					outputTokens: delta.outputTokens,
-					reasoningOutputTokens: delta.reasoningOutputTokens,
-					totalTokens: delta.totalTokens,
-				};
-
-				if (isFallbackModel) {
-					// Surface the fallback so both table + JSON outputs can annotate pricing that was
-					// inferred rather than sourced from the log metadata.
-					event.isFallbackModel = true;
-				}
-
-				events.push(event);
-			}
-
-			if (legacyFallbackUsed) {
-				logger.debug('Legacy Codex session lacked model metadata; applied fallback', {
+				return {
 					file,
-					model: LEGACY_FALLBACK_MODEL,
-				});
-			}
+					sessionId,
+					size: fileStat.value.size,
+					mtimeMs: fileStat.value.mtimeMs,
+				} satisfies SessionFileCandidate;
+			},
+		)
+	).filter((candidate): candidate is SessionFileCandidate => candidate != null);
+
+	const filesToLoad: SessionFileCandidate[] = [];
+	for (const candidate of sessionCandidates) {
+		const cached = indexedEntries.get(candidate.file);
+		if (
+			cached != null &&
+			cached.sessionId === candidate.sessionId &&
+			cached.size === candidate.size &&
+			cached.mtimeMs === candidate.mtimeMs
+		) {
+			events.push(...cached.events);
+			continue;
 		}
+
+		filesToLoad.push(candidate);
+	}
+
+	const sessionResults = await mapWithConcurrency(
+		filesToLoad,
+		SESSION_FILE_LOAD_CONCURRENCY,
+		async ({ file, sessionId, size, mtimeMs }) => ({
+			file,
+			sessionId,
+			size,
+			mtimeMs,
+			sessionResult: await Result.try({
+				try: loadEventsFromSessionFile(file, sessionId),
+				catch: (error) => error,
+			}),
+		}),
+	);
+
+	const shouldWriteIndex = filesToLoad.length > 0;
+	for (const { file, sessionId, size, mtimeMs, sessionResult } of sessionResults) {
+		if (Result.isFailure(sessionResult)) {
+			logger.debug('Failed to read Codex session file', sessionResult.error);
+			indexedEntries.delete(file);
+			continue;
+		}
+
+		events.push(...sessionResult.value.events);
+		indexedEntries.set(
+			file,
+			createSessionIndexEntry({
+				file,
+				sessionId,
+				size,
+				mtimeMs,
+				events: sessionResult.value.events,
+			}),
+		);
+
+		if (sessionResult.value.legacyFallbackUsed) {
+			logger.debug('Legacy Codex session lacked model metadata; applied fallback', {
+				file,
+				model: LEGACY_FALLBACK_MODEL,
+			});
+		}
+	}
+
+	if (shouldWriteIndex) {
+		await writeSessionIndex(indexedEntries.values());
 	}
 
 	events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -483,6 +724,280 @@ if (import.meta.vitest != null) {
 			expect(events).toHaveLength(1);
 			expect(events[0]!.model).toBe('gpt-5');
 			expect(events[0]!.isFallbackModel).toBe(true);
+		});
+
+		it('loads both active and archived sessions by default CODEX_HOME paths', async () => {
+			await using fixture = await createFixture({
+				sessions: {
+					'2026/02/10/active.jsonl': JSON.stringify({
+						timestamp: '2026-02-10T10:00:00.000Z',
+						type: 'event_msg',
+						payload: {
+							type: 'token_count',
+							info: {
+								last_token_usage: {
+									input_tokens: 100,
+									cached_input_tokens: 10,
+									output_tokens: 20,
+									reasoning_output_tokens: 0,
+									total_tokens: 120,
+								},
+								model: 'gpt-5',
+							},
+						},
+					}),
+				},
+				archived_sessions: {
+					'archived.jsonl': JSON.stringify({
+						timestamp: '2026-02-10T11:00:00.000Z',
+						type: 'event_msg',
+						payload: {
+							type: 'token_count',
+							info: {
+								last_token_usage: {
+									input_tokens: 200,
+									cached_input_tokens: 0,
+									output_tokens: 40,
+									reasoning_output_tokens: 0,
+									total_tokens: 240,
+								},
+								model: 'gpt-5',
+							},
+						},
+					}),
+				},
+			});
+
+			const previousCodexHome = process.env[CODEX_HOME_ENV];
+			process.env[CODEX_HOME_ENV] = fixture.getPath('.');
+
+			try {
+				const { events, missingDirectories } = await loadTokenUsageEvents();
+				expect(missingDirectories).toEqual([]);
+				expect(events).toHaveLength(2);
+				expect(events.map((event) => event.sessionId)).toEqual(['2026/02/10/active', 'archived']);
+			} finally {
+				if (previousCodexHome == null) {
+					delete process.env[CODEX_HOME_ENV];
+				} else {
+					process.env[CODEX_HOME_ENV] = previousCodexHome;
+				}
+			}
+		});
+
+		it('treats archived session directory as optional in default discovery', async () => {
+			await using fixture = await createFixture({
+				sessions: {
+					'2026/02/10/active.jsonl': JSON.stringify({
+						timestamp: '2026-02-10T10:00:00.000Z',
+						type: 'event_msg',
+						payload: {
+							type: 'token_count',
+							info: {
+								last_token_usage: {
+									input_tokens: 100,
+									cached_input_tokens: 10,
+									output_tokens: 20,
+									reasoning_output_tokens: 0,
+									total_tokens: 120,
+								},
+								model: 'gpt-5',
+							},
+						},
+					}),
+				},
+			});
+
+			const previousCodexHome = process.env[CODEX_HOME_ENV];
+			process.env[CODEX_HOME_ENV] = fixture.getPath('.');
+
+			try {
+				const { events, missingDirectories } = await loadTokenUsageEvents();
+				expect(events).toHaveLength(1);
+				expect(missingDirectories).toEqual([]);
+			} finally {
+				if (previousCodexHome == null) {
+					delete process.env[CODEX_HOME_ENV];
+				} else {
+					process.env[CODEX_HOME_ENV] = previousCodexHome;
+				}
+			}
+		});
+
+		it('ignores inherited fork transcript before the child task starts', async () => {
+			await using fixture = await createFixture({
+				sessions: {
+					'forked-child.jsonl': [
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.000Z',
+							type: 'session_meta',
+							payload: {
+								id: 'forked-child',
+								forked_from_id: 'parent-session',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.100Z',
+							type: 'event_msg',
+							payload: {
+								type: 'user_message',
+								message: 'parent prompt',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.200Z',
+							type: 'turn_context',
+							payload: {
+								model: 'gpt-5.4',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.300Z',
+							type: 'event_msg',
+							payload: {
+								type: 'token_count',
+								info: {
+									last_token_usage: {
+										input_tokens: 400_000,
+										cached_input_tokens: 390_000,
+										output_tokens: 1_000,
+										reasoning_output_tokens: 200,
+										total_tokens: 401_000,
+									},
+									model: 'gpt-5.4',
+								},
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.400Z',
+							type: 'response_item',
+							payload: {
+								type: 'function_call_output',
+								output:
+									'You are the newly spawned agent. The prior conversation history was forked from your parent agent.',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.500Z',
+							type: 'event_msg',
+							payload: {
+								type: 'user_message',
+								message: 'child prompt',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.600Z',
+							type: 'event_msg',
+							payload: {
+								type: 'token_count',
+								info: {
+									last_token_usage: {
+										input_tokens: 1_200,
+										cached_input_tokens: 800,
+										output_tokens: 120,
+										reasoning_output_tokens: 20,
+										total_tokens: 1_320,
+									},
+									total_token_usage: {
+										input_tokens: 1_200,
+										cached_input_tokens: 800,
+										output_tokens: 120,
+										reasoning_output_tokens: 20,
+										total_tokens: 1_320,
+									},
+								},
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.700Z',
+							type: 'event_msg',
+							payload: {
+								type: 'token_count',
+								info: {
+									total_token_usage: {
+										input_tokens: 2_000,
+										cached_input_tokens: 1_400,
+										output_tokens: 300,
+										reasoning_output_tokens: 30,
+										total_tokens: 2_300,
+									},
+								},
+							},
+						}),
+					].join('\n'),
+				},
+			});
+
+			const { events } = await loadTokenUsageEvents({
+				sessionDirs: [fixture.getPath('sessions')],
+			});
+
+			expect(events).toHaveLength(2);
+			expect(events.map((event) => event.inputTokens)).toEqual([1_200, 800]);
+			expect(events.map((event) => event.cachedInputTokens)).toEqual([800, 600]);
+			expect(events.map((event) => event.outputTokens)).toEqual([120, 180]);
+			expect(events.map((event) => event.model)).toEqual(['gpt-5.4', 'gpt-5.4']);
+			expect(events.some((event) => event.isFallbackModel === true)).toBe(false);
+		});
+
+		it('falls back to the full transcript when a forked session lacks the bootstrap marker', async () => {
+			await using fixture = await createFixture({
+				sessions: {
+					'forked-without-marker.jsonl': [
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.000Z',
+							type: 'session_meta',
+							payload: {
+								id: 'forked-without-marker',
+								forked_from_id: 'parent-session',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.100Z',
+							type: 'turn_context',
+							payload: {
+								model: 'gpt-5.4',
+							},
+						}),
+						JSON.stringify({
+							timestamp: '2026-03-08T10:26:42.200Z',
+							type: 'event_msg',
+							payload: {
+								type: 'token_count',
+								info: {
+									last_token_usage: {
+										input_tokens: 900,
+										cached_input_tokens: 600,
+										output_tokens: 90,
+										reasoning_output_tokens: 9,
+										total_tokens: 990,
+									},
+									model: 'gpt-5.4',
+								},
+							},
+						}),
+					].join('\n'),
+				},
+			});
+
+			const loggerDebug = vi.spyOn(logger, 'debug').mockImplementation(() => {});
+
+			const { events } = await loadTokenUsageEvents({
+				sessionDirs: [fixture.getPath('sessions')],
+			});
+
+			expect(events).toHaveLength(1);
+			expect(events[0]!.inputTokens).toBe(900);
+			expect(events[0]!.cachedInputTokens).toBe(600);
+			expect(events[0]!.outputTokens).toBe(90);
+			expect(loggerDebug).toHaveBeenCalledWith(
+				'Forked Codex session missing bootstrap marker; counting full transcript',
+				expect.objectContaining({
+					file: fixture.getPath('sessions/forked-without-marker.jsonl'),
+					forkedFromId: 'parent-session',
+				}),
+			);
+			loggerDebug.mockRestore();
 		});
 	});
 }

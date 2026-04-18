@@ -1,3 +1,7 @@
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
 import { Result } from '@praha/byethrow';
 import * as v from 'valibot';
 
@@ -67,6 +71,7 @@ export type LiteLLMPricingFetcherOptions = {
 	offlineLoader?: () => Promise<Record<string, LiteLLMModelPricing>>;
 	url?: string;
 	providerPrefixes?: string[];
+	forceRefresh?: boolean;
 };
 
 const DEFAULT_PROVIDER_PREFIXES = [
@@ -92,13 +97,150 @@ function createLogger(logger?: PricingLogger): PricingLogger {
 	};
 }
 
+const XDG_CACHE_HOME_ENV = 'XDG_CACHE_HOME';
+const CACHE_DIRECTORY_NAME = 'ccusage';
+const PRICING_CACHE_FILENAME = 'litellm-pricing.json';
+export const PRICING_CACHE_SCHEMA_VERSION = 1;
+
+export type PricingDataset = Record<string, LiteLLMModelPricing>;
+
+export type PricingCacheEnvelope = {
+	schemaVersion: number;
+	fetchedAt: string;
+	source: 'litellm';
+	pricing: PricingDataset;
+};
+
+export function getPricingCachePath(): string {
+	const cacheHome = process.env[XDG_CACHE_HOME_ENV] ?? path.join(homedir(), '.cache');
+	return path.join(cacheHome, CACHE_DIRECTORY_NAME, PRICING_CACHE_FILENAME);
+}
+
+function toPricingDataset(raw: unknown): PricingDataset {
+	if (typeof raw !== 'object' || raw == null) {
+		return Object.create(null) as PricingDataset;
+	}
+
+	const dataset = Object.create(null) as PricingDataset;
+	for (const [modelName, modelData] of Object.entries(raw)) {
+		if (typeof modelData !== 'object' || modelData == null) {
+			continue;
+		}
+
+		const parsed = v.safeParse(liteLLMModelPricingSchema, modelData);
+		if (!parsed.success) {
+			continue;
+		}
+
+		dataset[modelName] = parsed.output;
+	}
+
+	return dataset;
+}
+
+export function mapPricingToDataset(
+	pricing: Map<string, LiteLLMModelPricing>,
+): Record<string, LiteLLMModelPricing> {
+	return Object.fromEntries(pricing.entries()) as Record<string, LiteLLMModelPricing>;
+}
+
+export function isPricingCacheFreshForDate(fetchedAt: string, now: Date = new Date()): boolean {
+	const fetchedDate = new Date(fetchedAt);
+	return (
+		fetchedDate.getFullYear() === now.getFullYear() &&
+		fetchedDate.getMonth() === now.getMonth() &&
+		fetchedDate.getDate() === now.getDate()
+	);
+}
+
+export async function readPricingCacheEnvelope(): Promise<PricingCacheEnvelope | null> {
+	const cachePath = getPricingCachePath();
+
+	try {
+		const [content, cacheStat] = await Promise.all([readFile(cachePath, 'utf-8'), stat(cachePath)]);
+		const parsed = JSON.parse(content) as unknown;
+
+		if (typeof parsed === 'object' && parsed != null && 'pricing' in parsed) {
+			const record = parsed as Record<string, unknown>;
+			const dataset = toPricingDataset(record.pricing);
+			if (Object.keys(dataset).length === 0) {
+				return null;
+			}
+
+			return {
+				schemaVersion:
+					typeof record.schemaVersion === 'number'
+						? record.schemaVersion
+						: PRICING_CACHE_SCHEMA_VERSION,
+				fetchedAt:
+					typeof record.fetchedAt === 'string'
+						? record.fetchedAt
+						: new Date(cacheStat.mtimeMs).toISOString(),
+				source: record.source === 'litellm' ? 'litellm' : 'litellm',
+				pricing: dataset,
+			};
+		}
+
+		const dataset = toPricingDataset(parsed);
+		if (Object.keys(dataset).length === 0) {
+			return null;
+		}
+
+		return {
+			schemaVersion: PRICING_CACHE_SCHEMA_VERSION,
+			fetchedAt: new Date(cacheStat.mtimeMs).toISOString(),
+			source: 'litellm',
+			pricing: dataset,
+		};
+	} catch {
+		return null;
+	}
+}
+
+export async function readPricingCache(): Promise<PricingDataset | null> {
+	const envelope = await readPricingCacheEnvelope();
+	return envelope?.pricing ?? null;
+}
+
+export async function writePricingCacheEnvelope(envelope: PricingCacheEnvelope): Promise<void> {
+	const cachePath = getPricingCachePath();
+	const tempPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+	await mkdir(path.dirname(cachePath), { recursive: true });
+
+	try {
+		await writeFile(tempPath, JSON.stringify(envelope, null, '\t'));
+		await rename(tempPath, cachePath);
+	} finally {
+		await unlink(tempPath).catch(() => undefined);
+	}
+}
+
+export async function writePricingCache(
+	dataset: PricingDataset,
+	options: Partial<Omit<PricingCacheEnvelope, 'pricing'>> = {},
+): Promise<void> {
+	await writePricingCacheEnvelope({
+		schemaVersion: options.schemaVersion ?? PRICING_CACHE_SCHEMA_VERSION,
+		fetchedAt: options.fetchedAt ?? new Date().toISOString(),
+		source: options.source ?? 'litellm',
+		pricing: dataset,
+	});
+}
+
+type PricingLoadResult = Awaited<Result.ResultAsync<Map<string, LiteLLMModelPricing>, Error>>;
+
+const sharedOnlinePricingCache = new Map<string, Map<string, LiteLLMModelPricing>>();
+const sharedOnlinePricingInflight = new Map<string, Promise<PricingLoadResult>>();
+
 export class LiteLLMPricingFetcher implements Disposable {
 	private cachedPricing: Map<string, LiteLLMModelPricing> | null = null;
+	private loadingPricing: Promise<PricingLoadResult> | null = null;
 	private readonly logger: PricingLogger;
 	private readonly offline: boolean;
 	private readonly offlineLoader?: () => Promise<Record<string, LiteLLMModelPricing>>;
 	private readonly url: string;
 	private readonly providerPrefixes: string[];
+	private readonly forceRefresh: boolean;
 
 	constructor(options: LiteLLMPricingFetcherOptions = {}) {
 		this.logger = createLogger(options.logger);
@@ -106,6 +248,7 @@ export class LiteLLMPricingFetcher implements Disposable {
 		this.offlineLoader = options.offlineLoader;
 		this.url = options.url ?? LITELLM_PRICING_URL;
 		this.providerPrefixes = options.providerPrefixes ?? DEFAULT_PROVIDER_PREFIXES;
+		this.forceRefresh = Boolean(options.forceRefresh);
 	}
 
 	[Symbol.dispose](): void {
@@ -114,6 +257,12 @@ export class LiteLLMPricingFetcher implements Disposable {
 
 	clearCache(): void {
 		this.cachedPricing = null;
+		this.loadingPricing = null;
+	}
+
+	static clearSharedCaches(): void {
+		sharedOnlinePricingCache.clear();
+		sharedOnlinePricingInflight.clear();
 	}
 
 	private loadOfflinePricing = Result.try({
@@ -129,16 +278,40 @@ export class LiteLLMPricingFetcher implements Disposable {
 		catch: (error) => new Error('Failed to load offline pricing data', { cause: error }),
 	});
 
+	private async createPricingMap(
+		dataset: PricingDataset,
+	): Promise<Map<string, LiteLLMModelPricing>> {
+		if (this.offlineLoader == null) {
+			return new Map(Object.entries(dataset));
+		}
+
+		const bundled = await this.offlineLoader();
+		return new Map(
+			Object.entries({
+				...bundled,
+				...dataset,
+			}),
+		);
+	}
+
 	private async handleFallbackToCachedPricing(
 		originalError: unknown,
+		cachedEnvelope?: PricingCacheEnvelope | null,
 	): Result.ResultAsync<Map<string, LiteLLMModelPricing>, Error> {
 		this.logger.warn(
 			'Failed to fetch model pricing from LiteLLM, falling back to cached pricing data',
 		);
 		this.logger.debug('Fetch error details:', originalError);
+		if (cachedEnvelope != null) {
+			const pricing = await this.createPricingMap(cachedEnvelope.pricing);
+			this.cachedPricing = pricing;
+			return Result.succeed(pricing);
+		}
+
 		return Result.pipe(
 			this.loadOfflinePricing(),
 			Result.inspect((pricing) => {
+				this.cachedPricing = pricing;
 				this.logger.info(`Using cached pricing data for ${pricing.size} models`);
 			}),
 			Result.inspectError((error) => {
@@ -148,16 +321,97 @@ export class LiteLLMPricingFetcher implements Disposable {
 		);
 	}
 
+	private async loadPricingWithMemoization(
+		key: string | null,
+		loader: () => Promise<PricingLoadResult>,
+		options: {
+			bypassSharedCache?: boolean;
+		} = {},
+	): Promise<PricingLoadResult> {
+		if (this.cachedPricing != null) {
+			return Result.succeed(this.cachedPricing);
+		}
+
+		if (options.bypassSharedCache !== true && key != null) {
+			const sharedCached = sharedOnlinePricingCache.get(key);
+			if (sharedCached != null) {
+				this.cachedPricing = sharedCached;
+				return Result.succeed(sharedCached);
+			}
+		}
+
+		if (this.loadingPricing != null) {
+			return this.loadingPricing;
+		}
+
+		if (key != null) {
+			const inflight = sharedOnlinePricingInflight.get(key);
+			if (inflight != null) {
+				this.loadingPricing = inflight;
+				try {
+					const result = await inflight;
+					if (Result.isSuccess(result)) {
+						this.cachedPricing = result.value;
+					}
+					return result;
+				} finally {
+					this.loadingPricing = null;
+				}
+			}
+		}
+
+		const pending = (async () => {
+			const result = await loader();
+			if (Result.isSuccess(result)) {
+				this.cachedPricing = result.value;
+				if (key != null) {
+					sharedOnlinePricingCache.set(key, result.value);
+				}
+			}
+			return result;
+		})().finally(() => {
+			if (key != null) {
+				sharedOnlinePricingInflight.delete(key);
+			}
+			this.loadingPricing = null;
+		});
+
+		this.loadingPricing = pending;
+		if (key != null) {
+			sharedOnlinePricingInflight.set(key, pending);
+		}
+		return pending;
+	}
+
 	private async ensurePricingLoaded(): Result.ResultAsync<Map<string, LiteLLMModelPricing>, Error> {
-		return Result.pipe(
-			this.cachedPricing != null
-				? Result.succeed(this.cachedPricing)
-				: Result.fail(new Error('Cached pricing not available')),
-			Result.orElse(async () => {
-				if (this.offline) {
-					return this.loadOfflinePricing();
+		if (this.offline) {
+			return this.loadPricingWithMemoization(null, async () => {
+				const cachedEnvelope = await readPricingCacheEnvelope();
+				if (cachedEnvelope != null) {
+					const pricing = await this.createPricingMap(cachedEnvelope.pricing);
+					this.cachedPricing = pricing;
+					return Result.succeed(pricing);
 				}
 
+				return this.loadOfflinePricing();
+			});
+		}
+
+		const cachedEnvelope = await readPricingCacheEnvelope();
+		if (
+			!this.forceRefresh &&
+			cachedEnvelope != null &&
+			isPricingCacheFreshForDate(cachedEnvelope.fetchedAt)
+		) {
+			const pricing = await this.createPricingMap(cachedEnvelope.pricing);
+			this.cachedPricing = pricing;
+			sharedOnlinePricingCache.set(this.url, pricing);
+			return Result.succeed(pricing);
+		}
+
+		return this.loadPricingWithMemoization(
+			this.url,
+			async () => {
 				this.logger.warn('Fetching latest model pricing from LiteLLM...');
 				return Result.pipe(
 					Result.try({
@@ -193,13 +447,26 @@ export class LiteLLMPricingFetcher implements Disposable {
 						}
 						return pricing;
 					}),
+					Result.andThen(async (pricing) =>
+						Result.try({
+							try: async () => {
+								await writePricingCache(mapPricingToDataset(pricing), {
+									fetchedAt: new Date().toISOString(),
+									source: 'litellm',
+								});
+								return pricing;
+							},
+							catch: (error) =>
+								new Error('Failed to persist LiteLLM pricing cache', { cause: error }),
+						})(),
+					),
 					Result.inspect((pricing) => {
-						this.cachedPricing = pricing;
 						this.logger.info(`Loaded pricing for ${pricing.size} models`);
 					}),
-					Result.orElse(async (error) => this.handleFallbackToCachedPricing(error)),
+					Result.orElse(async (error) => this.handleFallbackToCachedPricing(error, cachedEnvelope)),
 				);
-			}),
+			},
+			{ bypassSharedCache: this.forceRefresh },
 		);
 	}
 
@@ -373,7 +640,17 @@ export class LiteLLMPricingFetcher implements Disposable {
 
 if (import.meta.vitest != null) {
 	describe('LiteLLMPricingFetcher', () => {
+		afterEach(() => {
+			LiteLLMPricingFetcher.clearSharedCaches();
+			vi.unstubAllEnvs();
+			vi.restoreAllMocks();
+		});
+
 		it('returns pricing data from LiteLLM dataset', async () => {
+			const { createFixture } = await import('fs-fixture');
+			await using fixture = await createFixture({});
+			vi.stubEnv('XDG_CACHE_HOME', fixture.path);
+
 			using fetcher = new LiteLLMPricingFetcher({
 				offline: true,
 				offlineLoader: async () => ({
@@ -568,6 +845,63 @@ if (import.meta.vitest != null) {
 				),
 			);
 			expect(costBelow).toBe(0);
+		});
+
+		it('deduplicates concurrent online loads within one fetcher instance', async () => {
+			const { createFixture } = await import('fs-fixture');
+			await using fixture = await createFixture({});
+			vi.stubEnv('XDG_CACHE_HOME', fixture.path);
+
+			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						'gpt-5': {
+							input_cost_per_token: 1.25e-6,
+							output_cost_per_token: 1e-5,
+						},
+					}),
+					{ status: 200 },
+				),
+			);
+
+			using fetcher = new LiteLLMPricingFetcher();
+			const [first, second] = await Promise.all([
+				Result.unwrap(fetcher.getModelPricing('gpt-5')),
+				Result.unwrap(fetcher.getModelPricing('gpt-5')),
+			]);
+
+			expect(first?.input_cost_per_token).toBe(1.25e-6);
+			expect(second?.input_cost_per_token).toBe(1.25e-6);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it('shares online pricing loads across fetcher instances with the same source URL', async () => {
+			const { createFixture } = await import('fs-fixture');
+			await using fixture = await createFixture({});
+			vi.stubEnv('XDG_CACHE_HOME', fixture.path);
+
+			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						'gpt-5': {
+							input_cost_per_token: 1.25e-6,
+							output_cost_per_token: 1e-5,
+						},
+					}),
+					{ status: 200 },
+				),
+			);
+
+			using firstFetcher = new LiteLLMPricingFetcher();
+			using secondFetcher = new LiteLLMPricingFetcher();
+			const [first, second] = await Promise.all([
+				Result.unwrap(firstFetcher.getModelPricing('gpt-5')),
+				Result.unwrap(secondFetcher.getModelPricing('gpt-5')),
+			]);
+
+			expect(first?.input_cost_per_token).toBe(1.25e-6);
+			expect(second?.input_cost_per_token).toBe(1.25e-6);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('applies fast speed multiplier from provider_specific_entry', async () => {

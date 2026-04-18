@@ -12,9 +12,12 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { mapWithConcurrency } from '@ccusage/internal/concurrency';
 import { isDirectorySync } from 'path-type';
 import { glob } from 'tinyglobby';
 import * as v from 'valibot';
+
+const FILE_LOAD_CONCURRENCY = 8;
 
 /**
  * Default OpenCode data directory path (~/.local/share/opencode)
@@ -233,10 +236,13 @@ export async function loadOpenCodeSessions(): Promise<Map<string, LoadedSessionM
 	});
 
 	const sessionMap = new Map<string, LoadedSessionMetadata>();
+	const loadedSessions = await mapWithConcurrency(
+		sessionFiles,
+		FILE_LOAD_CONCURRENCY,
+		async (filePath) => loadOpenCodeSession(filePath),
+	);
 
-	for (const filePath of sessionFiles) {
-		const session = await loadOpenCodeSession(filePath);
-
+	for (const session of loadedSessions) {
 		if (session == null) {
 			continue;
 		}
@@ -276,10 +282,13 @@ export async function loadOpenCodeMessages(): Promise<LoadedUsageEntry[]> {
 
 	const entries: LoadedUsageEntry[] = [];
 	const dedupeSet = new Set<string>();
+	const loadedMessages = await mapWithConcurrency(
+		messageFiles,
+		FILE_LOAD_CONCURRENCY,
+		async (filePath) => loadOpenCodeMessage(filePath),
+	);
 
-	for (const filePath of messageFiles) {
-		const message = await loadOpenCodeMessage(filePath);
-
+	for (const message of loadedMessages) {
 		if (message == null) {
 			continue;
 		}

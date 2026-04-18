@@ -62,8 +62,8 @@
 						},
 						"offline": {
 							"type": "boolean",
-							"description": "Use cached pricing data for Claude models instead of fetching from API",
-							"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+							"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+							"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 							"default": false
 						},
 						"color": {
@@ -159,8 +159,8 @@
 								},
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": false
 								},
 								"color": {
@@ -267,8 +267,8 @@
 								},
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": false
 								},
 								"color": {
@@ -359,8 +359,8 @@
 								},
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": false
 								},
 								"color": {
@@ -459,8 +459,8 @@
 								},
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": false
 								},
 								"color": {
@@ -556,8 +556,8 @@
 								},
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": false
 								},
 								"color": {
@@ -623,8 +623,8 @@
 							"properties": {
 								"offline": {
 									"type": "boolean",
-									"description": "Use cached pricing data for Claude models instead of fetching from API",
-									"markdownDescription": "Use cached pricing data for Claude models instead of fetching from API",
+									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
+									"markdownDescription": "Disable network pricing refresh and use local cached/bundled pricing data",
 									"default": true
 								},
 								"visualBurnRate": {

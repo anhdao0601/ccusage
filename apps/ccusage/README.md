@@ -19,6 +19,17 @@
 
 > Analyze your Claude Code token usage and costs from local JSONL files — incredibly fast and informative!
 
+## Fork Note
+
+This repo is a slopfork of `ccusage` with a few additions for my own workflow.
+
+The main differences from upstream are:
+
+- multi-provider reporting so I can look at Claude, Codex, OpenCode, Pi, and Amp usage in one place
+- extra caching/indexing work so local reports stay usable even when I have far too many old sessions
+
+Upstream `ccusage` is still the base project; this fork just optimizes for my "too many sessions and too many agent providers at the same time" use case.
+
 ## ccusage Family
 
 ### 📊 [ccusage](https://www.npmjs.com/package/ccusage) - Claude Code Usage Analyzer
@@ -93,6 +104,7 @@ npx ccusage daily --json  # JSON output
 npx ccusage daily --breakdown  # Per-model cost breakdown
 npx ccusage daily --timezone UTC  # Use UTC timezone
 npx ccusage daily --locale ja-JP  # Use Japanese locale for date/time formatting
+npx ccusage daily --update-pricing  # Refresh local LiteLLM pricing cache explicitly
 
 # Project analysis
 npx ccusage daily --instances  # Group by project/instance
@@ -121,8 +133,9 @@ npx ccusage monthly --compact  # Compact monthly report
 - 📋 **Enhanced Model Display**: Model names shown as bulleted lists for better readability
 - 📄 **JSON Output**: Export data in structured JSON format with `--json`
 - 💰 **Cost Tracking**: Shows costs in USD for each day/month/session
+- 🧊 **Safe Pricing Defaults**: Uses local cached/bundled pricing by default (no live fetch unless `--update-pricing`)
 - 🔄 **Cache Token Support**: Tracks and displays cache creation and cache read tokens separately
-- 🌐 **Offline Mode**: Use pre-cached pricing data without network connectivity with `--offline` (Claude models only)
+- 🌐 **Offline Mode**: Force no-network pricing behavior with `--offline` (Claude models only)
 - 🔌 **MCP Integration**: Built-in Model Context Protocol server for integration with other tools
 - 🏗️ **Multi-Instance Support**: Group usage by project with `--instances` flag and filter by specific projects
 - 🌍 **Timezone Support**: Configure timezone for date grouping with `--timezone` option
