@@ -13,7 +13,14 @@ import { loadConfig, mergeConfigWithArgs } from '../_config-loader-tokens.ts';
 import { DEFAULT_LOCALE } from '../_consts.ts';
 import { formatDateCompact } from '../_date-utils.ts';
 import { processWithJq } from '../_jq-processor.ts';
+import { loadMultiToolMonthlyReport, renderMultiToolMonthlyTable } from '../_multi-tool-report.ts';
+import {
+	getClaudeReportSources,
+	getMultiToolReportSources,
+	withReportCache,
+} from '../_report-cache.ts';
 import { sharedCommandConfig } from '../_shared-args.ts';
+import { hasExplicitToolSelection, normalizeToolSelection } from '../_tool-selection.ts';
 import { calculateTotals, createTotalsObject, getTotalTokens } from '../calculate-cost.ts';
 import { loadMonthlyUsageData } from '../data-loader.ts';
 import { detectMismatches, printMismatchReport } from '../debug.ts';
@@ -34,7 +41,107 @@ export const monthlyCommand = define({
 			logger.level = 0;
 		}
 
-		const monthlyData = await loadMonthlyUsageData(mergedOptions);
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			const tools = normalizeToolSelection(mergedOptions.tool);
+			const report = await withReportCache({
+				command: 'monthly',
+				parameters: {
+					mode: 'multi-tool',
+					tools,
+					since: mergedOptions.since,
+					until: mergedOptions.until,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale,
+					order: mergedOptions.order,
+					offline: Boolean(mergedOptions.offline),
+					updatePricing: Boolean(mergedOptions.updatePricing),
+				},
+				sources: getMultiToolReportSources('monthly', { tools }),
+				pricing: {
+					requiresPricing: tools.some((tool) => tool !== 'pi'),
+					offline: mergedOptions.offline,
+					updatePricing: mergedOptions.updatePricing,
+				},
+				load: async () =>
+					loadMultiToolMonthlyReport({
+						tools,
+						since: mergedOptions.since,
+						until: mergedOptions.until,
+						timezone: mergedOptions.timezone,
+						locale: mergedOptions.locale,
+						order: mergedOptions.order,
+						offline: mergedOptions.offline,
+						updatePricing: mergedOptions.updatePricing,
+					}),
+			});
+
+			if (report.rows.length === 0) {
+				const emptyOutput = {
+					monthly: [],
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+				if (useJson) {
+					log(JSON.stringify(emptyOutput, null, 2));
+				} else {
+					logger.warn('No usage data found for the selected tools.');
+				}
+				process.exit(0);
+			}
+
+			if (useJson) {
+				const jsonOutput = {
+					monthly: report.rows,
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+
+				if (mergedOptions.jq != null) {
+					const jqResult = await processWithJq(jsonOutput, mergedOptions.jq);
+					if (Result.isFailure(jqResult)) {
+						logger.error(jqResult.error.message);
+						process.exit(1);
+					}
+					log(jqResult.value);
+				} else {
+					log(JSON.stringify(jsonOutput, null, 2));
+				}
+				return;
+			}
+
+			logger.box('Multi-Tool Token Usage Report - Monthly');
+			log(
+				renderMultiToolMonthlyTable(report, {
+					compact: ctx.values.compact,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale ?? DEFAULT_LOCALE,
+					breakdown: mergedOptions.breakdown,
+				}),
+			);
+			return;
+		}
+
+		const monthlyData = await withReportCache({
+			command: 'monthly',
+			parameters: {
+				mode: 'claude',
+				since: mergedOptions.since,
+				until: mergedOptions.until,
+				timezone: mergedOptions.timezone,
+				locale: mergedOptions.locale,
+				order: mergedOptions.order,
+				costMode: mergedOptions.mode,
+				offline: Boolean(mergedOptions.offline),
+				updatePricing: Boolean(mergedOptions.updatePricing),
+			},
+			sources: getClaudeReportSources(),
+			pricing: {
+				requiresPricing: mergedOptions.mode !== 'display',
+				offline: mergedOptions.offline,
+				updatePricing: mergedOptions.updatePricing,
+			},
+			load: async () => loadMonthlyUsageData(mergedOptions),
+		});
 
 		if (monthlyData.length === 0) {
 			if (useJson) {
@@ -61,7 +168,11 @@ export const monthlyCommand = define({
 
 		// Show debug information if requested
 		if (mergedOptions.debug && !useJson) {
-			const mismatchStats = await detectMismatches(undefined);
+			const mismatchStats = await detectMismatches(
+				undefined,
+				Boolean(mergedOptions.offline),
+				Boolean(mergedOptions.updatePricing),
+			);
 			printMismatchReport(mismatchStats, mergedOptions.debugSamples as number | undefined);
 		}
 

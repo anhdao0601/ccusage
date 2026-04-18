@@ -12,6 +12,7 @@ import type { TokenUsageEvent } from './_types.ts';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { mapWithConcurrency } from '@ccusage/internal/concurrency';
 import { Result } from '@praha/byethrow';
 import { createFixture } from 'fs-fixture';
 import { isDirectorySync } from 'path-type';
@@ -24,6 +25,8 @@ import {
 	DEFAULT_AMP_DIR,
 } from './_consts.ts';
 import { logger } from './logger.ts';
+
+const FILE_LOAD_CONCURRENCY = 8;
 
 /**
  * Amp usageLedger event schema
@@ -235,9 +238,11 @@ export async function loadAmpUsageEvents(options: LoadOptions = {}): Promise<Loa
 			cwd: dir,
 			absolute: true,
 		});
+		const threadsForDir = await mapWithConcurrency(files, FILE_LOAD_CONCURRENCY, async (file) =>
+			loadThreadFile(file),
+		);
 
-		for (const file of files) {
-			const thread = await loadThreadFile(file);
+		for (const thread of threadsForDir) {
 			if (thread == null) {
 				continue;
 			}

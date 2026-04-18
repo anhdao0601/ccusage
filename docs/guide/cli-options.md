@@ -75,6 +75,18 @@ ccusage daily --offline
 ccusage daily -O
 ```
 
+### Pricing Refresh
+
+Refresh local pricing cache from LiteLLM explicitly:
+
+```bash
+# One-shot refresh from LiteLLM, then run report
+ccusage daily --update-pricing
+
+# Force no network even when refresh flag is present
+ccusage daily --offline --update-pricing
+```
+
 ### Timezone
 
 Set the timezone for date calculations:
@@ -325,17 +337,18 @@ LOG_LEVEL=0 ccusage daily --json
 
 Many options have short aliases for convenience:
 
-| Long Option   | Short | Description         |
-| ------------- | ----- | ------------------- |
-| `--json`      | `-j`  | JSON output         |
-| `--breakdown` | `-b`  | Per-model breakdown |
-| `--offline`   | `-O`  | Offline mode        |
-| `--timezone`  | `-z`  | Set timezone        |
-| `--locale`    | `-l`  | Set locale          |
-| `--instances` | `-i`  | Group by project    |
-| `--project`   | `-p`  | Filter project      |
-| `--active`    | `-a`  | Active block only   |
-| `--recent`    | `-r`  | Recent blocks       |
+| Long Option        | Short | Description                 |
+| ------------------ | ----- | --------------------------- |
+| `--json`           | `-j`  | JSON output                 |
+| `--breakdown`      | `-b`  | Per-model breakdown         |
+| `--offline`        | `-O`  | Offline mode                |
+| `--update-pricing` | -     | Refresh local pricing cache |
+| `--timezone`       | `-z`  | Set timezone                |
+| `--locale`         | `-l`  | Set locale                  |
+| `--instances`      | `-i`  | Group by project            |
+| `--project`        | `-p`  | Filter project              |
+| `--active`         | `-a`  | Active block only           |
+| `--recent`         | `-r`  | Recent blocks               |
 
 ## Related Documentation
 

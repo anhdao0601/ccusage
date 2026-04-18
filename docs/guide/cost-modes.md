@@ -176,8 +176,9 @@ When calculating costs from tokens, ccusage uses:
 
 #### Model Pricing Sources
 
-- **LiteLLM database** - Up-to-date model pricing
-- **Automatic updates** - Pricing refreshed regularly
+- **Local pricing cache** - Persisted LiteLLM pricing reused across runs
+- **Bundled fallback pricing** - Used when local cache is missing or invalid
+- **Explicit refresh** - Run `--update-pricing` to fetch latest LiteLLM pricing
 - **Multiple models** - Supports Claude Opus, Sonnet, and other models
 
 #### Token Types
@@ -289,6 +290,9 @@ ccusage monthly --mode auto --since 20240101 --order asc
 # All modes work with offline pricing data
 ccusage daily --mode calculate --offline
 ccusage monthly --mode auto --offline
+
+# Explicitly refresh pricing cache when you want latest LiteLLM rates
+ccusage daily --mode calculate --update-pricing
 ```
 
 ## Common Issues and Solutions
@@ -324,7 +328,7 @@ ccusage daily --mode calculate --since 20240101
 
 ```bash
 # Check for pricing updates
-ccusage daily --mode auto  # Updates pricing cache
+ccusage daily --mode auto --update-pricing  # Refresh pricing cache explicitly
 ccusage daily --mode calculate --debug  # Compare calculations
 ```
 

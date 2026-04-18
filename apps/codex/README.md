@@ -49,7 +49,7 @@ ccusage-codex daily
 ccusage-codex monthly --json
 ```
 
-> 💡 The CLI looks for Codex session JSONL files under `CODEX_HOME` (defaults to `~/.codex`).
+> 💡 The CLI looks for Codex session JSONL files under `CODEX_HOME` (defaults to `~/.codex`), scanning both `sessions/` and `archived_sessions/`.
 
 ## Common Commands
 
@@ -75,7 +75,7 @@ npx @ccusage/codex@latest sessions
 
 Useful environment variables:
 
-- `CODEX_HOME` – override the root directory that contains Codex session folders
+- `CODEX_HOME` – override the root directory that contains Codex session folders (`sessions/` and `archived_sessions/`)
 - `LOG_LEVEL` – controla consola log verbosity (0 silent … 5 trace)
 
 ℹ️ The CLI now relies on the model metadata recorded in each `turn_context`. Sessions emitted during early September 2025 that lack this metadata are skipped to avoid mispricing. Newer builds of the Codex CLI restore the model field, and aliases such as `gpt-5-codex` automatically resolve to the correct LiteLLM pricing entry.

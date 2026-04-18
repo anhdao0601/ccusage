@@ -29,7 +29,7 @@ const SCHEMA_FILENAME = 'config-schema.json';
  * Keys to exclude from the generated JSON Schema.
  * These are CLI-only options that shouldn't appear in configuration files.
  */
-const EXCLUDE_KEYS = ['config'];
+const EXCLUDE_KEYS = ['config', 'updatePricing'];
 
 /**
  * Command-specific keys to exclude from the generated JSON Schema.

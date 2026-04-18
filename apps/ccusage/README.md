@@ -93,6 +93,7 @@ npx ccusage daily --json  # JSON output
 npx ccusage daily --breakdown  # Per-model cost breakdown
 npx ccusage daily --timezone UTC  # Use UTC timezone
 npx ccusage daily --locale ja-JP  # Use Japanese locale for date/time formatting
+npx ccusage daily --update-pricing  # Refresh local LiteLLM pricing cache explicitly
 
 # Project analysis
 npx ccusage daily --instances  # Group by project/instance
@@ -121,8 +122,9 @@ npx ccusage monthly --compact  # Compact monthly report
 - 📋 **Enhanced Model Display**: Model names shown as bulleted lists for better readability
 - 📄 **JSON Output**: Export data in structured JSON format with `--json`
 - 💰 **Cost Tracking**: Shows costs in USD for each day/month/session
+- 🧊 **Safe Pricing Defaults**: Uses local cached/bundled pricing by default (no live fetch unless `--update-pricing`)
 - 🔄 **Cache Token Support**: Tracks and displays cache creation and cache read tokens separately
-- 🌐 **Offline Mode**: Use pre-cached pricing data without network connectivity with `--offline` (Claude models only)
+- 🌐 **Offline Mode**: Force no-network pricing behavior with `--offline` (Claude models only)
 - 🔌 **MCP Integration**: Built-in Model Context Protocol server for integration with other tools
 - 🏗️ **Multi-Instance Support**: Group usage by project with `--instances` flag and filter by specific projects
 - 🌍 **Timezone Support**: Configure timezone for date grouping with `--timezone` option

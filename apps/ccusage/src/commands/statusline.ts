@@ -14,6 +14,11 @@ import { loadConfig, mergeConfigWithArgs } from '../_config-loader-tokens.ts';
 import { DEFAULT_CONTEXT_USAGE_THRESHOLDS, DEFAULT_REFRESH_INTERVAL_SECONDS } from '../_consts.ts';
 import { calculateBurnRate } from '../_session-blocks.ts';
 import { sharedArgs } from '../_shared-args.ts';
+import {
+	assertClaudeOnlyTools,
+	hasExplicitToolSelection,
+	normalizeToolSelection,
+} from '../_tool-selection.ts';
 import { statuslineHookJsonSchema } from '../_types.ts';
 import { getFileModifiedTime, unreachable } from '../_utils.ts';
 import { calculateTotals } from '../calculate-cost.ts';
@@ -112,6 +117,7 @@ export const statuslineCommand = define({
 			...sharedArgs.offline,
 			default: true, // Default to offline mode for faster performance
 		},
+		updatePricing: sharedArgs.updatePricing,
 		visualBurnRate: {
 			type: 'enum',
 			choices: visualBurnRateChoices,
@@ -154,6 +160,7 @@ export const statuslineCommand = define({
 			parse: (value) => parseContextThreshold(value),
 			default: DEFAULT_CONTEXT_USAGE_THRESHOLDS.MEDIUM,
 		},
+		tool: sharedArgs.tool,
 		config: sharedArgs.config,
 		debug: sharedArgs.debug,
 	},
@@ -171,6 +178,10 @@ export const statuslineCommand = define({
 		// Load configuration and merge with CLI args
 		const config = loadConfig(ctx.values.config, ctx.values.debug);
 		const mergedOptions = mergeConfigWithArgs(ctx, config, ctx.values.debug);
+
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			assertClaudeOnlyTools(normalizeToolSelection(mergedOptions.tool), 'statusline');
+		}
 
 		// Use refresh interval from merged options
 		const refreshInterval = mergedOptions.refreshInterval;
@@ -292,6 +303,7 @@ export const statuslineCommand = define({
 										loadSessionUsageById(sessionId, {
 											mode: 'auto',
 											offline: mergedOptions.offline,
+											updatePricing: mergedOptions.updatePricing,
 										}),
 									catch: (error) => error,
 								})(),
@@ -344,6 +356,7 @@ export const statuslineCommand = define({
 									until: todayStr,
 									mode: 'auto',
 									offline: mergedOptions.offline,
+									updatePricing: mergedOptions.updatePricing,
 								}),
 							catch: (error) => error,
 						})(),
@@ -365,6 +378,7 @@ export const statuslineCommand = define({
 								loadSessionBlockData({
 									mode: 'auto',
 									offline: mergedOptions.offline,
+									updatePricing: mergedOptions.updatePricing,
 								}),
 							catch: (error) => error,
 						})(),
@@ -485,6 +499,7 @@ export const statuslineCommand = define({
 											hookData.transcript_path,
 											hookData.model.id,
 											mergedOptions.offline,
+											mergedOptions.updatePricing,
 										),
 									catch: (error) => error,
 								})();
@@ -574,3 +589,16 @@ export const statuslineCommand = define({
 		}
 	},
 });
+
+if (import.meta.vitest != null) {
+	describe('statuslineCommand', () => {
+		it('includes updatePricing argument', () => {
+			expect(statuslineCommand.args).toBeDefined();
+			if (statuslineCommand.args == null) {
+				throw new Error('statuslineCommand args should be defined');
+			}
+			expect(statuslineCommand.args.updatePricing).toBeDefined();
+			expect(statuslineCommand.args.updatePricing.default).toBe(false);
+		});
+	});
+}

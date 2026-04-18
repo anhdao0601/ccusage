@@ -44,7 +44,7 @@ After adding the alias to your shell config file (`.bashrc`, `.zshrc`, or `confi
 
 ## Data Source
 
-The CLI reads Codex session JSONL files located under `CODEX_HOME` (defaults to `~/.codex`). Each file represents a single Codex CLI session and contains running token totals that the tool converts into per-day or per-month deltas.
+The CLI reads Codex session JSONL files located under `CODEX_HOME` (defaults to `~/.codex`), scanning both `sessions/` and `archived_sessions/`. Each file represents a single Codex CLI session and contains running token totals that the tool converts into per-day or per-month deltas.
 
 ## What Gets Calculated
 
@@ -57,10 +57,10 @@ The CLI reads Codex session JSONL files located under `CODEX_HOME` (defaults to 
 
 ## Environment Variables
 
-| Variable     | Description                                                  |
-| ------------ | ------------------------------------------------------------ |
-| `CODEX_HOME` | Override the root directory containing Codex session folders |
-| `LOG_LEVEL`  | Adjust consola verbosity (0 silent … 5 trace)                |
+| Variable     | Description                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| `CODEX_HOME` | Override the root directory containing Codex session folders (`sessions/` and `archived_sessions/`) |
+| `LOG_LEVEL`  | Adjust consola verbosity (0 silent … 5 trace)                                                       |
 
 When Codex emits a model alias (for example `gpt-5-codex`), the CLI automatically resolves it to the canonical LiteLLM pricing entry. No manual override is needed.
 

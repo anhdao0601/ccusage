@@ -18,6 +18,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline';
 import { toArray } from '@antfu/utils';
+import { mapWithConcurrency } from '@ccusage/internal/concurrency';
 import { Result } from '@praha/byethrow';
 import { groupBy, uniq } from 'es-toolkit'; // TODO: after node20 is deprecated, switch to native Object.groupBy
 import { createFixture } from 'fs-fixture';
@@ -41,6 +42,7 @@ import {
 	getDayNumber,
 	sortByDate,
 } from './_date-utils.ts';
+import { writePricingCache } from './_pricing-cache.ts';
 import { PricingFetcher } from './_pricing-fetcher.ts';
 import { identifySessionBlocks } from './_session-blocks.ts';
 import {
@@ -68,6 +70,30 @@ import {
 } from './_types.ts';
 import { unreachable } from './_utils.ts';
 import { logger } from './logger.ts';
+
+const SEEDED_CLAUDE_PRICING = {
+	'anthropic/claude-sonnet-4-20250514': {
+		input_cost_per_token: 3e-6,
+		output_cost_per_token: 1.5e-5,
+		cache_creation_input_token_cost: 3.75e-6,
+		cache_read_input_token_cost: 3e-7,
+	},
+	'anthropic/claude-4-sonnet-20250514': {
+		input_cost_per_token: 3e-6,
+		output_cost_per_token: 1.5e-5,
+		cache_creation_input_token_cost: 3.75e-6,
+		cache_read_input_token_cost: 3e-7,
+	},
+	'anthropic/claude-opus-4-20250514': {
+		input_cost_per_token: 1.5e-5,
+		output_cost_per_token: 7.5e-5,
+		cache_creation_input_token_cost: 1.875e-5,
+		cache_read_input_token_cost: 1.5e-6,
+	},
+} as const;
+
+const CLAUDE_FILE_LOAD_CONCURRENCY = 8;
+const TIMESTAMP_SCAN_CONCURRENCY = 16;
 
 /**
  * Get Claude data directories to search for usage data
@@ -348,6 +374,13 @@ type TokenStats = {
 	cost: number;
 };
 
+type CostCalculator = {
+	calculateCostFromTokens: (
+		tokens: UsageData['message']['usage'],
+		modelName?: string,
+	) => Result.ResultAsync<number, Error>;
+};
+
 /**
  * Aggregates token counts and costs by model name
  */
@@ -594,11 +627,13 @@ export async function getEarliestTimestamp(filePath: string): Promise<Date | nul
  * Files without valid timestamps are placed at the end
  */
 export async function sortFilesByTimestamp(files: string[]): Promise<string[]> {
-	const filesWithTimestamps = await Promise.all(
-		files.map(async (file) => ({
+	const filesWithTimestamps = await mapWithConcurrency(
+		files,
+		TIMESTAMP_SCAN_CONCURRENCY,
+		async (file) => ({
 			file,
 			timestamp: await getEarliestTimestamp(file),
-		})),
+		}),
 	);
 
 	return filesWithTimestamps
@@ -629,7 +664,7 @@ export async function sortFilesByTimestamp(files: string[]): Promise<string[]> {
 export async function calculateCostForEntry(
 	data: UsageData,
 	mode: CostMode,
-	fetcher: PricingFetcher,
+	fetcher: CostCalculator,
 ): Promise<number> {
 	if (mode === 'display') {
 		// Always use costUSD, even if undefined
@@ -732,6 +767,7 @@ export type LoadOptions = {
 	mode?: CostMode; // Cost calculation mode
 	order?: SortOrder; // Sort order for dates
 	offline?: boolean; // Use offline mode for pricing
+	updatePricing?: boolean; // Refresh pricing from LiteLLM for this run
 	sessionDurationHours?: number; // Session block duration in hours
 	groupByProject?: boolean; // Group data by project instead of aggregating
 	project?: string; // Filter to specific project name
@@ -765,63 +801,91 @@ export async function loadDailyUsageData(options?: LoadOptions): Promise<DailyUs
 		options?.project,
 	);
 
-	// Sort files by timestamp to ensure chronological processing
-	const sortedFiles = await sortFilesByTimestamp(projectFilteredFiles);
-
 	// Fetch pricing data for cost calculation only when needed
 	const mode = options?.mode ?? 'auto';
 
 	// Use PricingFetcher with using statement for automatic cleanup
-	using fetcher = mode === 'display' ? null : new PricingFetcher(options?.offline);
+	using fetcher =
+		mode === 'display' ? null : new PricingFetcher(options?.offline, options?.updatePricing);
 
-	// Track processed message+request combinations for deduplication
-	const processedHashes = new Set<string>();
+	const parsedFiles = await mapWithConcurrency(
+		projectFilteredFiles,
+		CLAUDE_FILE_LOAD_CONCURRENCY,
+		async (file) => {
+			const project = extractProjectFromPath(file);
+			const entries: Array<{
+				uniqueHash: string | null;
+				data: UsageData;
+				date: string;
+				cost: number;
+				model: string | undefined;
+				project: string;
+			}> = [];
 
-	// Collect all valid data entries first
-	const allEntries: {
+			await processJSONLFileByLine(file, async (line) => {
+				try {
+					const parsed = JSON.parse(line) as unknown;
+					const result = v.safeParse(usageDataSchema, parsed);
+					if (!result.success) {
+						return;
+					}
+					const data = result.output;
+					const date = formatDate(data.timestamp, options?.timezone, DEFAULT_LOCALE);
+					const cost =
+						fetcher != null
+							? await calculateCostForEntry(data, mode, fetcher)
+							: (data.costUSD ?? 0);
+
+					entries.push({
+						uniqueHash: createUniqueHash(data),
+						data,
+						date,
+						cost,
+						model: data.message.model,
+						project,
+					});
+				} catch {
+					// Skip invalid JSON lines
+				}
+			});
+
+			return entries;
+		},
+	);
+
+	const dedupedEntries = new Map<
+		string,
+		{
+			data: UsageData;
+			date: string;
+			cost: number;
+			model: string | undefined;
+			project: string;
+		}
+	>();
+	const nonDedupedEntries: Array<{
 		data: UsageData;
 		date: string;
 		cost: number;
 		model: string | undefined;
 		project: string;
-	}[] = [];
+	}> = [];
 
-	for (const file of sortedFiles) {
-		// Extract project name from file path once per file
-		const project = extractProjectFromPath(file);
-
-		await processJSONLFileByLine(file, async (line) => {
-			try {
-				const parsed = JSON.parse(line) as unknown;
-				const result = v.safeParse(usageDataSchema, parsed);
-				if (!result.success) {
-					return;
-				}
-				const data = result.output;
-
-				// Check for duplicate message + request ID combination
-				const uniqueHash = createUniqueHash(data);
-				if (isDuplicateEntry(uniqueHash, processedHashes)) {
-					// Skip duplicate message
-					return;
-				}
-
-				// Mark this combination as processed
-				markAsProcessed(uniqueHash, processedHashes);
-
-				// Always use DEFAULT_LOCALE for date grouping to ensure YYYY-MM-DD format
-				const date = formatDate(data.timestamp, options?.timezone, DEFAULT_LOCALE);
-				// If fetcher is available, calculate cost based on mode and tokens
-				// If fetcher is null, use pre-calculated costUSD or default to 0
-				const cost =
-					fetcher != null ? await calculateCostForEntry(data, mode, fetcher) : (data.costUSD ?? 0);
-
-				allEntries.push({ data, date, cost, model: data.message.model, project });
-			} catch {
-				// Skip invalid JSON lines
+	for (const entries of parsedFiles) {
+		for (const entry of entries) {
+			if (entry.uniqueHash == null) {
+				nonDedupedEntries.push(entry);
+				continue;
 			}
-		});
+
+			const existing = dedupedEntries.get(entry.uniqueHash);
+			if (existing == null || entry.data.timestamp < existing.data.timestamp) {
+				dedupedEntries.set(entry.uniqueHash, entry);
+			}
+		}
 	}
+
+	const allEntries = [...nonDedupedEntries, ...dedupedEntries.values()];
 
 	// Group by date, optionally including project
 	// Automatically enable project grouping when project filter is specified
@@ -913,29 +977,79 @@ export async function loadSessionData(options?: LoadOptions): Promise<SessionUsa
 		options?.project,
 	);
 
-	// Sort files by timestamp to ensure chronological processing
-	// Create a map for O(1) lookup instead of O(N) find operations
-	const fileToBaseMap = new Map(projectFilteredWithBase.map((f) => [f.file, f.baseDir]));
-	const sortedFilesWithBase = await sortFilesByTimestamp(
-		projectFilteredWithBase.map((f) => f.file),
-	).then((sortedFiles) =>
-		sortedFiles.map((file) => ({
-			file,
-			baseDir: fileToBaseMap.get(file) ?? '',
-		})),
-	);
-
 	// Fetch pricing data for cost calculation only when needed
 	const mode = options?.mode ?? 'auto';
 
 	// Use PricingFetcher with using statement for automatic cleanup
-	using fetcher = mode === 'display' ? null : new PricingFetcher(options?.offline);
+	using fetcher =
+		mode === 'display' ? null : new PricingFetcher(options?.offline, options?.updatePricing);
 
-	// Track processed message+request combinations for deduplication
-	const processedHashes = new Set<string>();
+	const parsedFiles = await mapWithConcurrency(
+		projectFilteredWithBase,
+		CLAUDE_FILE_LOAD_CONCURRENCY,
+		async ({ file, baseDir }) => {
+			const relativePath = path.relative(baseDir, file);
+			const parts = relativePath.split(path.sep);
+			const sessionId = parts[parts.length - 2] ?? 'unknown';
+			const joinedPath = parts.slice(0, -2).join(path.sep);
+			const projectPath = joinedPath.length > 0 ? joinedPath : 'Unknown Project';
+			const sessionKey = `${projectPath}/${sessionId}`;
+			const entries: Array<{
+				uniqueHash: string | null;
+				data: UsageData;
+				sessionKey: string;
+				sessionId: string;
+				projectPath: string;
+				cost: number;
+				timestamp: string;
+				model: string | undefined;
+			}> = [];
 
-	// Collect all valid data entries with session info first
-	const allEntries: Array<{
+			await processJSONLFileByLine(file, async (line) => {
+				try {
+					const parsed = JSON.parse(line) as unknown;
+					const result = v.safeParse(usageDataSchema, parsed);
+					if (!result.success) {
+						return;
+					}
+					const data = result.output;
+					const cost =
+						fetcher != null
+							? await calculateCostForEntry(data, mode, fetcher)
+							: (data.costUSD ?? 0);
+
+					entries.push({
+						uniqueHash: createUniqueHash(data),
+						data,
+						sessionKey,
+						sessionId,
+						projectPath,
+						cost,
+						timestamp: data.timestamp,
+						model: data.message.model,
+					});
+				} catch {
+					// Skip invalid JSON lines
+				}
+			});
+
+			return entries;
+		},
+	);
+
+	const dedupedEntries = new Map<
+		string,
+		{
+			data: UsageData;
+			sessionKey: string;
+			sessionId: string;
+			projectPath: string;
+			cost: number;
+			timestamp: string;
+			model: string | undefined;
+		}
+	>();
+	const nonDedupedEntries: Array<{
 		data: UsageData;
 		sessionKey: string;
 		sessionId: string;
@@ -945,54 +1059,21 @@ export async function loadSessionData(options?: LoadOptions): Promise<SessionUsa
 		model: string | undefined;
 	}> = [];
 
-	for (const { file, baseDir } of sortedFilesWithBase) {
-		// Extract session info from file path using its specific base directory
-		const relativePath = path.relative(baseDir, file);
-		const parts = relativePath.split(path.sep);
-
-		// Session ID is the directory name containing the JSONL file
-		const sessionId = parts[parts.length - 2] ?? 'unknown';
-		// Project path is everything before the session ID
-		const joinedPath = parts.slice(0, -2).join(path.sep);
-		const projectPath = joinedPath.length > 0 ? joinedPath : 'Unknown Project';
-
-		await processJSONLFileByLine(file, async (line) => {
-			try {
-				const parsed = JSON.parse(line) as unknown;
-				const result = v.safeParse(usageDataSchema, parsed);
-				if (!result.success) {
-					return;
-				}
-				const data = result.output;
-
-				// Check for duplicate message + request ID combination
-				const uniqueHash = createUniqueHash(data);
-				if (isDuplicateEntry(uniqueHash, processedHashes)) {
-					// Skip duplicate message
-					return;
-				}
-
-				// Mark this combination as processed
-				markAsProcessed(uniqueHash, processedHashes);
-
-				const sessionKey = `${projectPath}/${sessionId}`;
-				const cost =
-					fetcher != null ? await calculateCostForEntry(data, mode, fetcher) : (data.costUSD ?? 0);
-
-				allEntries.push({
-					data,
-					sessionKey,
-					sessionId,
-					projectPath,
-					cost,
-					timestamp: data.timestamp,
-					model: data.message.model,
-				});
-			} catch {
-				// Skip invalid JSON lines
+	for (const entries of parsedFiles) {
+		for (const entry of entries) {
+			if (entry.uniqueHash == null) {
+				nonDedupedEntries.push(entry);
+				continue;
 			}
-		});
+
+			const existing = dedupedEntries.get(entry.uniqueHash);
+			if (existing == null || entry.timestamp < existing.timestamp) {
+				dedupedEntries.set(entry.uniqueHash, entry);
+			}
+		}
 	}
+
+	const allEntries = [...nonDedupedEntries, ...dedupedEntries.values()];
 
 	// Group by session using Object.groupBy
 	const groupedBySessions = groupBy(allEntries, (entry) => entry.sessionKey);
@@ -1112,11 +1193,12 @@ export async function loadWeeklyUsageData(options?: LoadOptions): Promise<Weekly
  * @param options - Options for loading data
  * @param options.mode - Cost calculation mode (auto, calculate, display)
  * @param options.offline - Whether to use offline pricing data
+ * @param options.updatePricing - Whether to refresh pricing from LiteLLM for this run
  * @returns Usage data for the specific session or null if not found
  */
 export async function loadSessionUsageById(
 	sessionId: string,
-	options?: { mode?: CostMode; offline?: boolean },
+	options?: { mode?: CostMode; offline?: boolean; updatePricing?: boolean },
 ): Promise<{ totalCost: number; entries: UsageData[] } | null> {
 	const claudePaths = getClaudePaths();
 
@@ -1137,7 +1219,8 @@ export async function loadSessionUsageById(
 	}
 
 	const mode = options?.mode ?? 'auto';
-	using fetcher = mode === 'display' ? null : new PricingFetcher(options?.offline);
+	using fetcher =
+		mode === 'display' ? null : new PricingFetcher(options?.offline, options?.updatePricing);
 
 	const entries: UsageData[] = [];
 	let totalCost = 0;
@@ -1254,6 +1337,7 @@ export async function calculateContextTokens(
 	transcriptPath: string,
 	modelId?: string,
 	offline = false,
+	updatePricing = false,
 ): Promise<{
 	inputTokens: number;
 	percentage: number;
@@ -1299,7 +1383,7 @@ export async function calculateContextTokens(
 				// Get context limit from PricingFetcher
 				let contextLimit = 200_000; // Fallback for when modelId is not provided
 				if (modelId != null && modelId !== '') {
-					using fetcher = new PricingFetcher(offline);
+					using fetcher = new PricingFetcher(offline, updatePricing);
 					const contextLimitResult = await fetcher.getModelContextLimit(modelId);
 					if (Result.isSuccess(contextLimitResult) && contextLimitResult.value != null) {
 						contextLimit = contextLimitResult.value;
@@ -1374,7 +1458,59 @@ export async function loadSessionBlockData(options?: LoadOptions): Promise<Sessi
 	const mode = options?.mode ?? 'auto';
 
 	// Use PricingFetcher with using statement for automatic cleanup
-	using fetcher = mode === 'display' ? null : new PricingFetcher(options?.offline);
+	using fetcher =
+		mode === 'display' ? null : new PricingFetcher(options?.offline, options?.updatePricing);
+
+	const parsedFiles = await mapWithConcurrency(
+		sortedFiles,
+		CLAUDE_FILE_LOAD_CONCURRENCY,
+		async (file) => {
+			const entries: Array<{
+				uniqueHash: string | null;
+				entry: LoadedUsageEntry;
+			}> = [];
+
+			await processJSONLFileByLine(file, async (line) => {
+				try {
+					const parsed = JSON.parse(line) as unknown;
+					const result = v.safeParse(usageDataSchema, parsed);
+					if (!result.success) {
+						return;
+					}
+					const data = result.output;
+					const cost =
+						fetcher != null
+							? await calculateCostForEntry(data, mode, fetcher)
+							: (data.costUSD ?? 0);
+					const usageLimitResetTime = getUsageLimitResetTime(data);
+
+					entries.push({
+						uniqueHash: createUniqueHash(data),
+						entry: {
+							timestamp: new Date(data.timestamp),
+							usage: {
+								inputTokens: data.message.usage.input_tokens,
+								outputTokens: data.message.usage.output_tokens,
+								cacheCreationInputTokens: data.message.usage.cache_creation_input_tokens ?? 0,
+								cacheReadInputTokens: data.message.usage.cache_read_input_tokens ?? 0,
+							},
+							costUSD: cost,
+							model: data.message.model ?? 'unknown',
+							version: data.version,
+							usageLimitResetTime: usageLimitResetTime ?? undefined,
+						},
+					});
+				} catch (error) {
+					// Skip invalid JSON lines but log for debugging purposes
+					logger.debug(
+						`Skipping invalid JSON line in 5-hour blocks: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			});
+
+			return entries;
+		},
+	);
 
 	// Track processed message+request combinations for deduplication
 	const processedHashes = new Set<string>();
@@ -1382,52 +1518,15 @@ export async function loadSessionBlockData(options?: LoadOptions): Promise<Sessi
 	// Collect all valid data entries first
 	const allEntries: LoadedUsageEntry[] = [];
 
-	for (const file of sortedFiles) {
-		await processJSONLFileByLine(file, async (line) => {
-			try {
-				const parsed = JSON.parse(line) as unknown;
-				const result = v.safeParse(usageDataSchema, parsed);
-				if (!result.success) {
-					return;
-				}
-				const data = result.output;
-
-				// Check for duplicate message + request ID combination
-				const uniqueHash = createUniqueHash(data);
-				if (isDuplicateEntry(uniqueHash, processedHashes)) {
-					// Skip duplicate message
-					return;
-				}
-
-				// Mark this combination as processed
-				markAsProcessed(uniqueHash, processedHashes);
-
-				const cost =
-					fetcher != null ? await calculateCostForEntry(data, mode, fetcher) : (data.costUSD ?? 0);
-
-				// Get Claude Code usage limit expiration date
-				const usageLimitResetTime = getUsageLimitResetTime(data);
-
-				allEntries.push({
-					timestamp: new Date(data.timestamp),
-					usage: {
-						inputTokens: data.message.usage.input_tokens,
-						outputTokens: data.message.usage.output_tokens,
-						cacheCreationInputTokens: data.message.usage.cache_creation_input_tokens ?? 0,
-						cacheReadInputTokens: data.message.usage.cache_read_input_tokens ?? 0,
-					},
-					costUSD: cost,
-					model: data.message.model ?? 'unknown',
-					version: data.version,
-					usageLimitResetTime: usageLimitResetTime ?? undefined,
-				});
-			} catch (error) {
-				// Skip invalid JSON lines but log for debugging purposes
-				logger.debug(
-					`Skipping invalid JSON line in 5-hour blocks: ${error instanceof Error ? error.message : String(error)}`,
-				);
+	for (const entries of parsedFiles) {
+		for (const { uniqueHash, entry } of entries) {
+			if (isDuplicateEntry(uniqueHash, processedHashes)) {
+				continue;
 			}
-		});
+
+			markAsProcessed(uniqueHash, processedHashes);
+			allEntries.push(entry);
+		}
 	}
 
 	// Identify session blocks
@@ -1529,6 +1628,7 @@ if (import.meta.vitest != null) {
 		const { createFixture } = await import('fs-fixture');
 
 		afterEach(() => {
+			PricingFetcher.clearSharedCaches();
 			vi.unstubAllEnvs();
 		});
 
@@ -2947,6 +3047,24 @@ invalid json line
 	});
 
 	describe('data-loader cost calculation with real pricing', () => {
+		let pricingCacheFixture: Awaited<ReturnType<typeof createFixture>> | undefined;
+
+		beforeEach(async () => {
+			pricingCacheFixture = await createFixture({});
+			vi.stubEnv('XDG_CACHE_HOME', pricingCacheFixture.path);
+			await writePricingCache(SEEDED_CLAUDE_PRICING, {
+				fetchedAt: new Date().toISOString(),
+			});
+		});
+
+		afterEach(async () => {
+			PricingFetcher.clearSharedCaches();
+			vi.unstubAllEnvs();
+			vi.restoreAllMocks();
+			await pricingCacheFixture?.[Symbol.asyncDispose]?.();
+			pricingCacheFixture = undefined;
+		});
+
 		describe('loadDailyUsageData with mixed schemas', () => {
 			it('should handle old schema with costUSD', async () => {
 				const oldData = {
@@ -3415,6 +3533,11 @@ invalid json line
 		});
 
 		describe('pricing data fetching optimization', () => {
+			afterEach(() => {
+				PricingFetcher.clearSharedCaches();
+				vi.restoreAllMocks();
+			});
+
 			it('should not require model pricing when mode is display', async () => {
 				const data = {
 					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
@@ -3445,12 +3568,12 @@ invalid json line
 				expect(results[0]?.totalCost).toBe(0.05);
 			});
 
-			it('should fetch pricing data when mode is calculate', async () => {
+			it('should not fetch pricing data when mode is calculate and updatePricing is false', async () => {
 				const data = {
 					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
 					message: {
 						usage: { input_tokens: 1000, output_tokens: 500 },
-						model: createModelName('claude-4-sonnet-20250514'),
+						model: createModelName('claude-sonnet-4-20250514'),
 					},
 					costUSD: 0.05,
 				};
@@ -3463,27 +3586,45 @@ invalid json line
 							},
 						},
 					},
+					cache: {},
 				});
 
-				// This should fetch pricing data (will call real fetch)
+				vi.stubEnv('XDG_CACHE_HOME', fixture.getPath('cache'));
+				await writePricingCache(
+					{
+						'anthropic/claude-sonnet-4-20250514': {
+							input_cost_per_token: 3e-6,
+							output_cost_per_token: 1.5e-5,
+						},
+					},
+					{
+						fetchedAt: new Date().toISOString(),
+					},
+				);
+
+				const fetchSpy = vi
+					.spyOn(globalThis, 'fetch')
+					.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+
 				const results = await loadDailyUsageData({
 					claudePath: fixture.path,
 					mode: 'calculate',
+					updatePricing: false,
 				});
 
 				expect(results).toHaveLength(1);
 				expect(results[0]?.totalCost).toBeGreaterThan(0);
 				expect(results[0]?.totalCost).not.toBe(0.05); // Should calculate, not use costUSD
+				expect(fetchSpy).not.toHaveBeenCalled();
 			});
 
-			it('should fetch pricing data when mode is auto', async () => {
+			it('should fetch pricing data when mode is calculate and updatePricing is true', async () => {
 				const data = {
 					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
 					message: {
 						usage: { input_tokens: 1000, output_tokens: 500 },
-						model: createModelName('claude-4-sonnet-20250514'),
+						model: createModelName('claude-sonnet-4-20250514'),
 					},
-					// No costUSD, so auto mode will need to calculate
 				};
 
 				await using fixture = await createFixture({
@@ -3496,14 +3637,118 @@ invalid json line
 					},
 				});
 
-				// This should fetch pricing data (will call real fetch)
+				const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+					new Response(
+						JSON.stringify({
+							'anthropic/claude-sonnet-4-20250514': {
+								input_cost_per_token: 3e-6,
+								output_cost_per_token: 1.5e-5,
+							},
+						}),
+						{ status: 200 },
+					),
+				);
+
 				const results = await loadDailyUsageData({
 					claudePath: fixture.path,
-					mode: 'auto',
+					mode: 'calculate',
+					updatePricing: true,
 				});
 
 				expect(results).toHaveLength(1);
 				expect(results[0]?.totalCost).toBeGreaterThan(0);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
+			});
+
+			it('should not fetch pricing data when mode is auto and updatePricing is false', async () => {
+				const data = {
+					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
+					message: {
+						usage: { input_tokens: 1000, output_tokens: 500 },
+						model: createModelName('claude-sonnet-4-20250514'),
+					},
+					// No costUSD, so auto mode will need to calculate
+				};
+
+				await using fixture = await createFixture({
+					projects: {
+						'test-project': {
+							session: {
+								'usage.jsonl': JSON.stringify(data),
+							},
+						},
+					},
+					cache: {},
+				});
+
+				vi.stubEnv('XDG_CACHE_HOME', fixture.getPath('cache'));
+				await writePricingCache(
+					{
+						'anthropic/claude-sonnet-4-20250514': {
+							input_cost_per_token: 3e-6,
+							output_cost_per_token: 1.5e-5,
+						},
+					},
+					{
+						fetchedAt: new Date().toISOString(),
+					},
+				);
+
+				const fetchSpy = vi
+					.spyOn(globalThis, 'fetch')
+					.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+
+				const results = await loadDailyUsageData({
+					claudePath: fixture.path,
+					mode: 'auto',
+					updatePricing: false,
+				});
+
+				expect(results).toHaveLength(1);
+				expect(results[0]?.totalCost).toBeGreaterThan(0);
+				expect(fetchSpy).not.toHaveBeenCalled();
+			});
+
+			it('should fetch pricing data when mode is auto and updatePricing is true', async () => {
+				const data = {
+					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
+					message: {
+						usage: { input_tokens: 1000, output_tokens: 500 },
+						model: createModelName('claude-sonnet-4-20250514'),
+					},
+				};
+
+				await using fixture = await createFixture({
+					projects: {
+						'test-project': {
+							session: {
+								'usage.jsonl': JSON.stringify(data),
+							},
+						},
+					},
+				});
+
+				const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+					new Response(
+						JSON.stringify({
+							'anthropic/claude-sonnet-4-20250514': {
+								input_cost_per_token: 3e-6,
+								output_cost_per_token: 1.5e-5,
+							},
+						}),
+						{ status: 200 },
+					),
+				);
+
+				const results = await loadDailyUsageData({
+					claudePath: fixture.path,
+					mode: 'auto',
+					updatePricing: true,
+				});
+
+				expect(results).toHaveLength(1);
+				expect(results[0]?.totalCost).toBeGreaterThan(0);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
 			});
 
 			it('session data should not require model pricing when mode is display', async () => {
@@ -3534,6 +3779,47 @@ invalid json line
 
 				expect(results).toHaveLength(1);
 				expect(results[0]?.totalCost).toBe(0.05);
+			});
+
+			it('passes updatePricing through loadSessionData when enabled', async () => {
+				const data = {
+					timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
+					message: {
+						usage: { input_tokens: 1000, output_tokens: 500 },
+						model: createModelName('claude-sonnet-4-20250514'),
+					},
+				};
+
+				await using fixture = await createFixture({
+					projects: {
+						'test-project': {
+							session: {
+								'usage.jsonl': JSON.stringify(data),
+							},
+						},
+					},
+				});
+
+				const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+					new Response(
+						JSON.stringify({
+							'anthropic/claude-sonnet-4-20250514': {
+								input_cost_per_token: 3e-6,
+								output_cost_per_token: 1.5e-5,
+							},
+						}),
+						{ status: 200 },
+					),
+				);
+
+				const results = await loadSessionData({
+					claudePath: fixture.path,
+					mode: 'auto',
+					updatePricing: true,
+				});
+
+				expect(results).toHaveLength(1);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
 			});
 
 			it('display mode should work without network access', async () => {
@@ -3572,6 +3858,24 @@ invalid json line
 	});
 
 	describe('calculateCostForEntry', () => {
+		let pricingCacheFixture: Awaited<ReturnType<typeof createFixture>> | undefined;
+
+		beforeEach(async () => {
+			pricingCacheFixture = await createFixture({});
+			vi.stubEnv('XDG_CACHE_HOME', pricingCacheFixture.path);
+			await writePricingCache(SEEDED_CLAUDE_PRICING, {
+				fetchedAt: new Date().toISOString(),
+			});
+		});
+
+		afterEach(async () => {
+			PricingFetcher.clearSharedCaches();
+			vi.unstubAllEnvs();
+			vi.restoreAllMocks();
+			await pricingCacheFixture?.[Symbol.asyncDispose]?.();
+			pricingCacheFixture = undefined;
+		});
+
 		const mockUsageData: UsageData = {
 			timestamp: createISOTimestamp('2024-01-01T10:00:00Z'),
 			message: {
@@ -3783,10 +4087,59 @@ invalid json line
 	});
 
 	describe('loadSessionBlockData', () => {
+		afterEach(() => {
+			PricingFetcher.clearSharedCaches();
+			vi.restoreAllMocks();
+		});
+
 		it('returns empty array when no files found', async () => {
 			await using fixture = await createFixture({ projects: {} });
 			const result = await loadSessionBlockData({ claudePath: fixture.path });
 			expect(result).toEqual([]);
+		});
+
+		it('passes updatePricing through loadSessionBlockData when enabled', async () => {
+			await using fixture = await createFixture({
+				projects: {
+					project1: {
+						session1: {
+							'usage.jsonl': JSON.stringify({
+								timestamp: new Date('2024-01-01T10:00:00Z').toISOString(),
+								message: {
+									id: 'msg1',
+									usage: {
+										input_tokens: 1000,
+										output_tokens: 500,
+									},
+									model: 'claude-sonnet-4-20250514',
+								},
+								costUSD: undefined,
+							}),
+						},
+					},
+				},
+			});
+
+			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						'anthropic/claude-sonnet-4-20250514': {
+							input_cost_per_token: 3e-6,
+							output_cost_per_token: 1.5e-5,
+						},
+					}),
+					{ status: 200 },
+				),
+			);
+
+			const result = await loadSessionBlockData({
+				claudePath: fixture.path,
+				mode: 'auto',
+				updatePricing: true,
+			});
+
+			expect(result.length).toBeGreaterThan(0);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
 		});
 
 		it('loads and identifies five-hour blocks correctly', async () => {
@@ -4695,6 +5048,11 @@ if (import.meta.vitest != null) {
 
 	// Test for calculateContextTokens
 	describe('calculateContextTokens', async () => {
+		afterEach(() => {
+			PricingFetcher.clearSharedCaches();
+			vi.restoreAllMocks();
+		});
+
 		it('returns null when transcript cannot be read', async () => {
 			const result = await calculateContextTokens('/nonexistent/path.jsonl');
 			expect(result).toBeNull();
@@ -4748,6 +5106,37 @@ if (import.meta.vitest != null) {
 			const res = await calculateContextTokens(fixture.getPath('transcript.jsonl'));
 			expect(res).not.toBeNull();
 			expect(res?.percentage).toBe(100); // Should be clamped to 100
+		});
+
+		it('passes updatePricing when context limit lookup is requested', async () => {
+			await using fixture = await createFixture({
+				'transcript.jsonl': [
+					JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 1000 } } }),
+				].join('\n'),
+			});
+
+			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						'anthropic/claude-sonnet-4-20250514': {
+							max_input_tokens: 200_000,
+							input_cost_per_token: 3e-6,
+							output_cost_per_token: 1.5e-5,
+						},
+					}),
+					{ status: 200 },
+				),
+			);
+
+			const res = await calculateContextTokens(
+				fixture.getPath('transcript.jsonl'),
+				'claude-sonnet-4-20250514',
+				false,
+				true,
+			);
+
+			expect(res).not.toBeNull();
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
 		});
 	});
 }

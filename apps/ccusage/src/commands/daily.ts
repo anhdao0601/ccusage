@@ -14,8 +14,15 @@ import { loadConfig, mergeConfigWithArgs } from '../_config-loader-tokens.ts';
 import { groupByProject, groupDataByProject } from '../_daily-grouping.ts';
 import { formatDateCompact } from '../_date-utils.ts';
 import { processWithJq } from '../_jq-processor.ts';
+import { loadMultiToolDailyReport, renderMultiToolDailyTable } from '../_multi-tool-report.ts';
 import { formatProjectName } from '../_project-names.ts';
+import {
+	getClaudeReportSources,
+	getMultiToolReportSources,
+	withReportCache,
+} from '../_report-cache.ts';
 import { sharedCommandConfig } from '../_shared-args.ts';
+import { hasExplicitToolSelection, normalizeToolSelection } from '../_tool-selection.ts';
 import { calculateTotals, createTotalsObject, getTotalTokens } from '../calculate-cost.ts';
 import { loadDailyUsageData } from '../data-loader.ts';
 import { detectMismatches, printMismatchReport } from '../debug.ts';
@@ -75,9 +82,117 @@ export const dailyCommand = define({
 			logger.level = 0;
 		}
 
-		const dailyData = await loadDailyUsageData({
-			...mergedOptions,
-			groupByProject: mergedOptions.instances,
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			if (mergedOptions.instances || mergedOptions.project != null) {
+				logger.error('`--instances` and `--project` are only supported in Claude-only mode.');
+				process.exit(1);
+			}
+
+			const tools = normalizeToolSelection(mergedOptions.tool);
+			const report = await withReportCache({
+				command: 'daily',
+				parameters: {
+					mode: 'multi-tool',
+					tools,
+					since: mergedOptions.since,
+					until: mergedOptions.until,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale,
+					order: mergedOptions.order,
+					offline: Boolean(mergedOptions.offline),
+					updatePricing: Boolean(mergedOptions.updatePricing),
+				},
+				sources: getMultiToolReportSources('daily', { tools }),
+				pricing: {
+					requiresPricing: tools.some((tool) => tool !== 'pi'),
+					offline: mergedOptions.offline,
+					updatePricing: mergedOptions.updatePricing,
+				},
+				load: async () =>
+					loadMultiToolDailyReport({
+						tools,
+						since: mergedOptions.since,
+						until: mergedOptions.until,
+						timezone: mergedOptions.timezone,
+						locale: mergedOptions.locale,
+						order: mergedOptions.order,
+						offline: mergedOptions.offline,
+						updatePricing: mergedOptions.updatePricing,
+					}),
+			});
+
+			if (report.rows.length === 0) {
+				const emptyOutput = {
+					daily: [],
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+				if (useJson) {
+					log(JSON.stringify(emptyOutput, null, 2));
+				} else {
+					logger.warn('No usage data found for the selected tools.');
+				}
+				process.exit(0);
+			}
+
+			if (useJson) {
+				const jsonOutput = {
+					daily: report.rows,
+					totals: report.totals,
+					totalsBySource: report.totalsBySource,
+				};
+
+				if (mergedOptions.jq != null) {
+					const jqResult = await processWithJq(jsonOutput, mergedOptions.jq);
+					if (Result.isFailure(jqResult)) {
+						logger.error(jqResult.error.message);
+						process.exit(1);
+					}
+					log(jqResult.value);
+				} else {
+					log(JSON.stringify(jsonOutput, null, 2));
+				}
+				return;
+			}
+
+			logger.box('Multi-Tool Token Usage Report - Daily');
+			log(
+				renderMultiToolDailyTable(report, {
+					compact: ctx.values.compact,
+					timezone: mergedOptions.timezone,
+					locale: mergedOptions.locale ?? undefined,
+					breakdown: mergedOptions.breakdown,
+				}),
+			);
+			return;
+		}
+
+		const dailyData = await withReportCache({
+			command: 'daily',
+			parameters: {
+				mode: 'claude',
+				since: mergedOptions.since,
+				until: mergedOptions.until,
+				timezone: mergedOptions.timezone,
+				locale: mergedOptions.locale,
+				order: mergedOptions.order,
+				costMode: mergedOptions.mode,
+				groupByProject: Boolean(mergedOptions.instances),
+				project: mergedOptions.project ?? null,
+				offline: Boolean(mergedOptions.offline),
+				updatePricing: Boolean(mergedOptions.updatePricing),
+			},
+			sources: getClaudeReportSources(),
+			pricing: {
+				requiresPricing: mergedOptions.mode !== 'display',
+				offline: mergedOptions.offline,
+				updatePricing: mergedOptions.updatePricing,
+			},
+			load: async () =>
+				loadDailyUsageData({
+					...mergedOptions,
+					groupByProject: mergedOptions.instances,
+				}),
 		});
 
 		if (dailyData.length === 0) {
@@ -94,7 +209,11 @@ export const dailyCommand = define({
 
 		// Show debug information if requested
 		if (mergedOptions.debug && !useJson) {
-			const mismatchStats = await detectMismatches(undefined);
+			const mismatchStats = await detectMismatches(
+				undefined,
+				Boolean(mergedOptions.offline),
+				Boolean(mergedOptions.updatePricing),
+			);
 			printMismatchReport(mismatchStats, mergedOptions.debugSamples as number | undefined);
 		}
 

@@ -14,6 +14,11 @@ import { WEEK_DAYS } from '../_consts.ts';
 import { formatDateCompact } from '../_date-utils.ts';
 import { processWithJq } from '../_jq-processor.ts';
 import { sharedArgs } from '../_shared-args.ts';
+import {
+	assertClaudeOnlyTools,
+	hasExplicitToolSelection,
+	normalizeToolSelection,
+} from '../_tool-selection.ts';
 import { calculateTotals, createTotalsObject, getTotalTokens } from '../calculate-cost.ts';
 import { loadWeeklyUsageData } from '../data-loader.ts';
 import { detectMismatches, printMismatchReport } from '../debug.ts';
@@ -44,6 +49,10 @@ export const weeklyCommand = define({
 			logger.level = 0;
 		}
 
+		if (hasExplicitToolSelection(mergedOptions.tool)) {
+			assertClaudeOnlyTools(normalizeToolSelection(mergedOptions.tool), 'weekly');
+		}
+
 		const weeklyData = await loadWeeklyUsageData(mergedOptions);
 
 		if (weeklyData.length === 0) {
@@ -71,7 +80,11 @@ export const weeklyCommand = define({
 
 		// Show debug information if requested
 		if (mergedOptions.debug && !useJson) {
-			const mismatchStats = await detectMismatches(undefined);
+			const mismatchStats = await detectMismatches(
+				undefined,
+				Boolean(mergedOptions.offline),
+				Boolean(mergedOptions.updatePricing),
+			);
 			printMismatchReport(mismatchStats, mergedOptions.debugSamples as number | undefined);
 		}
 

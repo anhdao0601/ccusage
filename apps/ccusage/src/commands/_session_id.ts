@@ -5,7 +5,7 @@ import { formatCurrency, formatNumber, ResponsiveTable } from '@ccusage/terminal
 import { Result } from '@praha/byethrow';
 import { formatDateCompact } from '../_date-utils.ts';
 import { processWithJq } from '../_jq-processor.ts';
-import { loadSessionUsageById } from '../data-loader.ts';
+import * as dataLoader from '../data-loader.ts';
 import { log, logger } from '../logger.ts';
 
 export type SessionIdContext = {
@@ -13,6 +13,7 @@ export type SessionIdContext = {
 		id: string;
 		mode: CostMode;
 		offline: boolean;
+		updatePricing: boolean;
 		jq?: string;
 		timezone?: string;
 		locale: string; // normalized to non-optional to avoid touching data-loader
@@ -26,9 +27,10 @@ export async function handleSessionIdLookup(
 	ctx: SessionIdContext,
 	useJson: boolean,
 ): Promise<void> {
-	const sessionUsage = await loadSessionUsageById(ctx.values.id, {
+	const sessionUsage = await dataLoader.loadSessionUsageById(ctx.values.id, {
 		mode: ctx.values.mode,
 		offline: ctx.values.offline,
+		updatePricing: ctx.values.updatePricing,
 	});
 
 	if (sessionUsage == null) {
@@ -111,4 +113,39 @@ function calculateSessionTotalTokens(entries: UsageData[]): number {
 			(usage.cache_read_input_tokens ?? 0)
 		);
 	}, 0);
+}
+
+if (import.meta.vitest != null) {
+	describe('handleSessionIdLookup', () => {
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		it('passes updatePricing option to loadSessionUsageById', async () => {
+			const loadSessionUsageByIdSpy = vi
+				.spyOn(dataLoader, 'loadSessionUsageById')
+				.mockResolvedValue({ totalCost: 0, entries: [] });
+			const logSpy = vi.spyOn(logger, 'box').mockImplementation(() => {});
+
+			await handleSessionIdLookup(
+				{
+					values: {
+						id: 'session-123',
+						mode: 'auto',
+						offline: true,
+						updatePricing: true,
+						locale: 'en-CA',
+					},
+				},
+				false,
+			);
+
+			expect(loadSessionUsageByIdSpy).toHaveBeenCalledWith('session-123', {
+				mode: 'auto',
+				offline: true,
+				updatePricing: true,
+			});
+			expect(logSpy).toHaveBeenCalled();
+		});
+	});
 }

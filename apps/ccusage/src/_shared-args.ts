@@ -2,6 +2,7 @@ import type { Args } from 'gunshi';
 import type { CostMode, SortOrder } from './_types.ts';
 import * as v from 'valibot';
 import { DEFAULT_LOCALE } from './_consts.ts';
+import { parseToolArgument } from './_tool-selection.ts';
 import { CostModes, filterDateSchema, SortOrders } from './_types.ts';
 
 /**
@@ -71,7 +72,12 @@ export const sharedArgs = {
 		type: 'boolean',
 		negatable: true,
 		short: 'O',
-		description: 'Use cached pricing data for Claude models instead of fetching from API',
+		description: 'Disable network pricing refresh and use local cached/bundled pricing data',
+		default: false,
+	},
+	updatePricing: {
+		type: 'boolean',
+		description: 'Force-refresh LiteLLM pricing and update the local pricing cache for this run',
 		default: false,
 	},
 	color: {
@@ -109,6 +115,11 @@ export const sharedArgs = {
 		type: 'boolean',
 		description: 'Force compact mode for narrow displays (better for screenshots)',
 		default: false,
+	},
+	tool: {
+		type: 'custom',
+		description: 'Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list',
+		parse: parseToolArgument,
 	},
 } as const satisfies Args;
 
