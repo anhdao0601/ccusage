@@ -93,6 +93,7 @@ export const sessionCommand = define({
 					locale: mergedOptions.locale,
 					offline: Boolean(mergedOptions.offline),
 					updatePricing: Boolean(mergedOptions.updatePricing),
+					byModel: Boolean(mergedOptions.byModel),
 				},
 				sources: getMultiToolReportSources('session', { tools }),
 				pricing: {
@@ -109,6 +110,7 @@ export const sessionCommand = define({
 						locale: mergedOptions.locale,
 						offline: mergedOptions.offline,
 						updatePricing: mergedOptions.updatePricing,
+						byModel: mergedOptions.byModel,
 					}),
 			});
 

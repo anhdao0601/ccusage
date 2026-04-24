@@ -106,6 +106,7 @@ type MultiToolReportOptions = {
 	codexSessionDirs?: string[];
 	piPath?: string;
 	ampThreadDirs?: string[];
+	byModel?: boolean;
 };
 
 type ModelAggregate = {
@@ -308,6 +309,37 @@ function sortMonthlyRows<T extends { month: string }>(
 			? left.month.localeCompare(right.month)
 			: right.month.localeCompare(left.month),
 	);
+}
+
+type MultiToolModelRow = RowMetrics & {
+	source: ToolName;
+	modelsUsed: string[];
+	modelBreakdowns: NormalizedModelBreakdown[];
+};
+
+function splitRowsByModel<Row extends MultiToolModelRow>(rows: Row[]): Row[] {
+	return rows.flatMap((row) => {
+		const breakdowns = [...row.modelBreakdowns].sort((left, right) =>
+			left.modelName.localeCompare(right.modelName),
+		);
+		if (breakdowns.length === 0) {
+			return [row];
+		}
+
+		return breakdowns.map((breakdown, index) => ({
+			...row,
+			inputTokens: breakdown.inputTokens,
+			outputTokens: breakdown.outputTokens,
+			cacheCreationTokens: breakdown.cacheCreationTokens,
+			cacheReadTokens: breakdown.cacheReadTokens,
+			totalTokens: breakdown.totalTokens,
+			totalCost: breakdown.cost,
+			reasoningOutputTokens: breakdown.reasoningOutputTokens,
+			credits: index === 0 ? row.credits : undefined,
+			modelsUsed: [breakdown.modelName],
+			modelBreakdowns: [breakdown],
+		}));
+	});
 }
 
 async function loadClaudeDailyRows(options: MultiToolReportOptions): Promise<MultiToolDailyRow[]> {
@@ -1223,8 +1255,9 @@ export async function loadMultiToolDailyReport(
 		},
 	);
 
+	const rows = sortByDate(rowsByTool.flat(), (row) => row.date, options.order);
 	return createMultiToolReport(
-		sortByDate(rowsByTool.flat(), (row) => row.date, options.order),
+		options.byModel === true ? splitRowsByModel(rows) : rows,
 		options.tools,
 	);
 }
@@ -1251,7 +1284,11 @@ export async function loadMultiToolMonthlyReport(
 		},
 	);
 
-	return createMultiToolReport(sortMonthlyRows(rowsByTool.flat(), options.order), options.tools);
+	const rows = sortMonthlyRows(rowsByTool.flat(), options.order);
+	return createMultiToolReport(
+		options.byModel === true ? splitRowsByModel(rows) : rows,
+		options.tools,
+	);
 }
 
 export async function loadMultiToolSessionReport(
@@ -1276,8 +1313,9 @@ export async function loadMultiToolSessionReport(
 		},
 	);
 
+	const rows = sortByDate(rowsByTool.flat(), (row) => row.lastActivity, options.order);
 	return createMultiToolReport(
-		sortByDate(rowsByTool.flat(), (row) => row.lastActivity, options.order),
+		options.byModel === true ? splitRowsByModel(rows) : rows,
 		options.tools,
 	);
 }
@@ -1756,6 +1794,60 @@ if (import.meta.vitest != null) {
 			});
 			expect(monthlyReport.totalsBySource.claude?.totalTokens).toBe(150);
 			expect(monthlyReport.totalsBySource.codex?.totalTokens).toBe(230);
+		});
+
+		it('splits multi-tool rows into per-model rows', () => {
+			const rows: MultiToolMonthlyRow[] = [
+				{
+					source: 'pi',
+					month: '2026-04',
+					inputTokens: 30,
+					outputTokens: 15,
+					cacheCreationTokens: 3,
+					cacheReadTokens: 300,
+					totalTokens: 348,
+					totalCost: 0.35,
+					modelsUsed: ['[pi] gpt-5.4', '[pi] anthropic/claude-opus-4-7'],
+					modelBreakdowns: [
+						{
+							modelName: '[pi] gpt-5.4',
+							inputTokens: 10,
+							outputTokens: 5,
+							cacheCreationTokens: 1,
+							cacheReadTokens: 100,
+							totalTokens: 116,
+							cost: 0.1,
+						},
+						{
+							modelName: '[pi] anthropic/claude-opus-4-7',
+							inputTokens: 20,
+							outputTokens: 10,
+							cacheCreationTokens: 2,
+							cacheReadTokens: 200,
+							totalTokens: 232,
+							cost: 0.25,
+						},
+					],
+				},
+			];
+
+			const report = createMultiToolReport(splitRowsByModel(rows), ['pi']);
+
+			expect(report.rows).toHaveLength(2);
+			expect(report.rows.map((row) => row.modelsUsed)).toEqual([
+				['[pi] anthropic/claude-opus-4-7'],
+				['[pi] gpt-5.4'],
+			]);
+			expect(report.rows.map((row) => row.totalTokens)).toEqual([232, 116]);
+			expect(report.totals).toMatchObject({
+				inputTokens: 30,
+				outputTokens: 15,
+				cacheCreationTokens: 3,
+				cacheReadTokens: 300,
+				totalTokens: 348,
+				totalCost: 0.35,
+			});
+			expect(report.totalsBySource.pi?.totalTokens).toBe(348);
 		});
 
 		it('merges Claude and Codex session rows', async () => {

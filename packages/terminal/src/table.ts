@@ -200,7 +200,7 @@ export class ResponsiveTable {
 					if (adjustedWidths[index]! <= minimumWidths[index]!) {
 						continue;
 					}
-					adjustedWidths[index] -= 1;
+					adjustedWidths[index] = adjustedWidths[index]! - 1;
 					overflow -= 1;
 					reducedInGroup = true;
 				}

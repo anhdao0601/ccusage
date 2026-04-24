@@ -55,6 +55,7 @@ export const monthlyCommand = define({
 					order: mergedOptions.order,
 					offline: Boolean(mergedOptions.offline),
 					updatePricing: Boolean(mergedOptions.updatePricing),
+					byModel: Boolean(mergedOptions.byModel),
 				},
 				sources: getMultiToolReportSources('monthly', { tools }),
 				pricing: {
@@ -72,6 +73,7 @@ export const monthlyCommand = define({
 						order: mergedOptions.order,
 						offline: mergedOptions.offline,
 						updatePricing: mergedOptions.updatePricing,
+						byModel: mergedOptions.byModel,
 					}),
 			});
 

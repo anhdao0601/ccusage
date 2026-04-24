@@ -68,6 +68,11 @@ export const sharedArgs = {
 		description: 'Show per-model cost breakdown',
 		default: false,
 	},
+	byModel: {
+		type: 'boolean',
+		description: 'Split multi-tool report rows by model within each source',
+		default: false,
+	},
 	offline: {
 		type: 'boolean',
 		negatable: true,

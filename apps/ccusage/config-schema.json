@@ -60,6 +60,12 @@
 							"markdownDescription": "Show per-model cost breakdown",
 							"default": false
 						},
+						"byModel": {
+							"type": "boolean",
+							"description": "Split multi-tool report rows by model within each source",
+							"markdownDescription": "Split multi-tool report rows by model within each source",
+							"default": false
+						},
 						"offline": {
 							"type": "boolean",
 							"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -97,6 +103,11 @@
 							"description": "Force compact mode for narrow displays (better for screenshots)",
 							"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 							"default": false
+						},
+						"tool": {
+							"type": "string",
+							"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+							"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 						}
 					},
 					"additionalProperties": false,
@@ -157,6 +168,12 @@
 									"markdownDescription": "Show per-model cost breakdown",
 									"default": false
 								},
+								"byModel": {
+									"type": "boolean",
+									"description": "Split multi-tool report rows by model within each source",
+									"markdownDescription": "Split multi-tool report rows by model within each source",
+									"default": false
+								},
 								"offline": {
 									"type": "boolean",
 									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -194,6 +211,11 @@
 									"description": "Force compact mode for narrow displays (better for screenshots)",
 									"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 									"default": false
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								},
 								"instances": {
 									"type": "boolean",
@@ -265,6 +287,12 @@
 									"markdownDescription": "Show per-model cost breakdown",
 									"default": false
 								},
+								"byModel": {
+									"type": "boolean",
+									"description": "Split multi-tool report rows by model within each source",
+									"markdownDescription": "Split multi-tool report rows by model within each source",
+									"default": false
+								},
 								"offline": {
 									"type": "boolean",
 									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -302,6 +330,11 @@
 									"description": "Force compact mode for narrow displays (better for screenshots)",
 									"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 									"default": false
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								}
 							},
 							"additionalProperties": false
@@ -357,6 +390,12 @@
 									"markdownDescription": "Show per-model cost breakdown",
 									"default": false
 								},
+								"byModel": {
+									"type": "boolean",
+									"description": "Split multi-tool report rows by model within each source",
+									"markdownDescription": "Split multi-tool report rows by model within each source",
+									"default": false
+								},
 								"offline": {
 									"type": "boolean",
 									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -394,6 +433,11 @@
 									"description": "Force compact mode for narrow displays (better for screenshots)",
 									"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 									"default": false
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								},
 								"startOfWeek": {
 									"type": "string",
@@ -457,6 +501,12 @@
 									"markdownDescription": "Show per-model cost breakdown",
 									"default": false
 								},
+								"byModel": {
+									"type": "boolean",
+									"description": "Split multi-tool report rows by model within each source",
+									"markdownDescription": "Split multi-tool report rows by model within each source",
+									"default": false
+								},
 								"offline": {
 									"type": "boolean",
 									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -494,6 +544,11 @@
 									"description": "Force compact mode for narrow displays (better for screenshots)",
 									"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 									"default": false
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								},
 								"id": {
 									"type": "string",
@@ -554,6 +609,12 @@
 									"markdownDescription": "Show per-model cost breakdown",
 									"default": false
 								},
+								"byModel": {
+									"type": "boolean",
+									"description": "Split multi-tool report rows by model within each source",
+									"markdownDescription": "Split multi-tool report rows by model within each source",
+									"default": false
+								},
 								"offline": {
 									"type": "boolean",
 									"description": "Disable network pricing refresh and use local cached/bundled pricing data",
@@ -591,6 +652,11 @@
 									"description": "Force compact mode for narrow displays (better for screenshots)",
 									"markdownDescription": "Force compact mode for narrow displays (better for screenshots)",
 									"default": false
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								},
 								"active": {
 									"type": "boolean",
@@ -664,6 +730,11 @@
 									"description": "Context usage percentage below which status is shown in yellow (0-100)",
 									"markdownDescription": "Context usage percentage below which status is shown in yellow (0-100)",
 									"default": 80
+								},
+								"tool": {
+									"type": "string",
+									"description": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list",
+									"markdownDescription": "Tool source(s): claude, codex, opencode, pi, amp, all, or a comma-separated list"
 								},
 								"debug": {
 									"type": "boolean",

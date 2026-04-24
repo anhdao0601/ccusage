@@ -101,6 +101,7 @@ export const dailyCommand = define({
 					order: mergedOptions.order,
 					offline: Boolean(mergedOptions.offline),
 					updatePricing: Boolean(mergedOptions.updatePricing),
+					byModel: Boolean(mergedOptions.byModel),
 				},
 				sources: getMultiToolReportSources('daily', { tools }),
 				pricing: {
@@ -118,6 +119,7 @@ export const dailyCommand = define({
 						order: mergedOptions.order,
 						offline: mergedOptions.offline,
 						updatePricing: mergedOptions.updatePricing,
+						byModel: mergedOptions.byModel,
 					}),
 			});
 
