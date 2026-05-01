@@ -1,4 +1,4 @@
-const TOOL_NAMES = ['claude', 'codex', 'opencode', 'pi', 'amp'] as const;
+const TOOL_NAMES = ['claude', 'codex', 'opencode', 'pi', 'amp', 'hermes'] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 

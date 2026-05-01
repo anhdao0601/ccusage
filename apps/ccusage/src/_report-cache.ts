@@ -19,9 +19,10 @@ import {
 import { getOpenCodePath } from '../../opencode/src/data-loader.ts';
 import { getPiAgentPaths } from '../../pi/src/_pi-agent.ts';
 import { CLAUDE_PROJECTS_DIR_NAME, USAGE_DATA_GLOB_PATTERN } from './_consts.ts';
+import { getHermesDbPath } from './_hermes-agent.ts';
 import { getClaudePaths } from './data-loader.ts';
 
-const REPORT_CACHE_SCHEMA_VERSION = 1;
+const REPORT_CACHE_SCHEMA_VERSION = 2;
 const CACHE_DIRECTORY_NAME = 'ccusage';
 const REPORT_CACHE_SUBDIR = 'reports';
 const FILE_FINGERPRINT_CONCURRENCY = 32;
@@ -348,6 +349,7 @@ export function getMultiToolReportSources(
 		claudePath?: string | string[];
 		codexSessionDirs?: string[];
 		piPath?: string;
+		hermesPath?: string;
 		ampThreadDirs?: string[];
 	},
 ): CacheSource[] {
@@ -369,6 +371,17 @@ export function getMultiToolReportSources(
 			case 'amp':
 				sources.push(...getAmpReportSources(options.ampThreadDirs));
 				break;
+			case 'hermes': {
+				const dbPath = getHermesDbPath(options.hermesPath);
+				if (dbPath != null) {
+					sources.push({
+						id: 'hermes:0',
+						dir: path.dirname(dbPath),
+						patterns: ['state.db'],
+					});
+				}
+				break;
+			}
 		}
 	}
 	return sources;

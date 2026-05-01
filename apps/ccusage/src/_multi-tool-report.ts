@@ -30,6 +30,14 @@ import {
 	loadPiAgentSessionData,
 } from '../../pi/src/data-loader.ts';
 import { sortByDate } from './_date-utils.ts';
+import {
+	loadHermesDailyData,
+	loadHermesData,
+	loadHermesMonthlyData,
+	loadHermesSessionData,
+	toLiteLLMModelName,
+} from './_hermes-agent.ts';
+import { PricingFetcher } from './_pricing-fetcher.ts';
 import { getTotalTokens } from './calculate-cost.ts';
 import { loadDailyUsageData, loadMonthlyUsageData, loadSessionData } from './data-loader.ts';
 
@@ -105,6 +113,7 @@ type MultiToolReportOptions = {
 	claudePath?: string;
 	codexSessionDirs?: string[];
 	piPath?: string;
+	hermesPath?: string;
 	ampThreadDirs?: string[];
 	byModel?: boolean;
 };
@@ -1233,6 +1242,232 @@ async function loadPiSessionRows(options: MultiToolReportOptions): Promise<Multi
 	}));
 }
 
+async function calculateHermesModelCost(
+	fetcher: PricingFetcher,
+	rawModel: string,
+	tokens: {
+		inputTokens: number;
+		outputTokens: number;
+		cacheCreationTokens: number;
+		cacheReadTokens: number;
+	},
+): Promise<number> {
+	const litellmModel = toLiteLLMModelName(rawModel);
+	if (litellmModel === '') {
+		return 0;
+	}
+
+	// Try with anthropic/ prefix first (more likely to match), then bare name
+	for (const candidate of [`anthropic/${litellmModel}`, litellmModel]) {
+		const result = await fetcher.calculateCostFromTokens(
+			{
+				input_tokens: tokens.inputTokens,
+				output_tokens: tokens.outputTokens,
+				cache_creation_input_tokens: tokens.cacheCreationTokens,
+				cache_read_input_tokens: tokens.cacheReadTokens,
+			},
+			candidate,
+		);
+		if ('value' in result && result.value > 0) {
+			return result.value;
+		}
+	}
+
+	return 0;
+}
+
+async function loadHermesDailyRows(options: MultiToolReportOptions): Promise<MultiToolDailyRow[]> {
+	const rows = loadHermesDailyData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+		order: options.order,
+	});
+
+	const rawEntries = loadHermesData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+	});
+
+	const modelToRaw = new Map<string, string>();
+	for (const entry of rawEntries) {
+		modelToRaw.set(entry.model, entry.rawModel);
+	}
+
+	using fetcher = new PricingFetcher(options.offline ?? false, options.updatePricing ?? false);
+
+	const results: MultiToolDailyRow[] = [];
+	for (const row of rows) {
+		const breakdowns: NormalizedModelBreakdown[] = [];
+		let totalCost = 0;
+
+		for (const breakdown of row.modelBreakdowns) {
+			const rawModel = modelToRaw.get(breakdown.modelName) ?? '';
+			const cost = await calculateHermesModelCost(fetcher, rawModel, breakdown);
+
+			breakdowns.push({
+				...breakdown,
+				totalTokens:
+					breakdown.inputTokens +
+					breakdown.outputTokens +
+					breakdown.cacheCreationTokens +
+					breakdown.cacheReadTokens,
+				cost,
+			});
+			totalCost += cost;
+		}
+
+		results.push({
+			source: 'hermes',
+			date: row.date,
+			inputTokens: row.inputTokens,
+			outputTokens: row.outputTokens,
+			cacheCreationTokens: row.cacheCreationTokens,
+			cacheReadTokens: row.cacheReadTokens,
+			totalTokens:
+				row.inputTokens + row.outputTokens + row.cacheCreationTokens + row.cacheReadTokens,
+			totalCost,
+			modelsUsed: [...row.modelsUsed],
+			modelBreakdowns: breakdowns,
+		});
+	}
+
+	return results;
+}
+
+async function loadHermesMonthlyRows(
+	options: MultiToolReportOptions,
+): Promise<MultiToolMonthlyRow[]> {
+	const rows = loadHermesMonthlyData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+		order: options.order,
+	});
+
+	const rawEntries = loadHermesData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+	});
+
+	const modelToRaw = new Map<string, string>();
+	for (const entry of rawEntries) {
+		modelToRaw.set(entry.model, entry.rawModel);
+	}
+
+	using fetcher = new PricingFetcher(options.offline ?? false, options.updatePricing ?? false);
+
+	const results: MultiToolMonthlyRow[] = [];
+	for (const row of rows) {
+		const breakdowns: NormalizedModelBreakdown[] = [];
+		let totalCost = 0;
+
+		for (const breakdown of row.modelBreakdowns) {
+			const rawModel = modelToRaw.get(breakdown.modelName) ?? '';
+			const cost = await calculateHermesModelCost(fetcher, rawModel, breakdown);
+
+			breakdowns.push({
+				...breakdown,
+				totalTokens:
+					breakdown.inputTokens +
+					breakdown.outputTokens +
+					breakdown.cacheCreationTokens +
+					breakdown.cacheReadTokens,
+				cost,
+			});
+			totalCost += cost;
+		}
+
+		results.push({
+			source: 'hermes',
+			month: row.month,
+			inputTokens: row.inputTokens,
+			outputTokens: row.outputTokens,
+			cacheCreationTokens: row.cacheCreationTokens,
+			cacheReadTokens: row.cacheReadTokens,
+			totalTokens:
+				row.inputTokens + row.outputTokens + row.cacheCreationTokens + row.cacheReadTokens,
+			totalCost,
+			modelsUsed: [...row.modelsUsed],
+			modelBreakdowns: breakdowns,
+		});
+	}
+
+	return results;
+}
+
+async function loadHermesSessionRows(
+	options: MultiToolReportOptions,
+): Promise<MultiToolSessionRow[]> {
+	const rows = loadHermesSessionData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+		order: options.order,
+	});
+
+	const rawEntries = loadHermesData({
+		hermesPath: options.hermesPath,
+		since: options.since,
+		until: options.until,
+		timezone: options.timezone,
+	});
+
+	const modelToRaw = new Map<string, string>();
+	for (const entry of rawEntries) {
+		modelToRaw.set(entry.model, entry.rawModel);
+	}
+
+	using fetcher = new PricingFetcher(options.offline ?? false, options.updatePricing ?? false);
+
+	const results: MultiToolSessionRow[] = [];
+	for (const row of rows) {
+		const breakdowns: NormalizedModelBreakdown[] = [];
+		let totalCost = 0;
+
+		for (const breakdown of row.modelBreakdowns) {
+			const rawModel = modelToRaw.get(breakdown.modelName) ?? '';
+			const cost = await calculateHermesModelCost(fetcher, rawModel, breakdown);
+
+			breakdowns.push({
+				...breakdown,
+				totalTokens:
+					breakdown.inputTokens +
+					breakdown.outputTokens +
+					breakdown.cacheCreationTokens +
+					breakdown.cacheReadTokens,
+				cost,
+			});
+			totalCost += cost;
+		}
+
+		results.push({
+			source: 'hermes',
+			sessionId: row.sessionId,
+			displayName: row.displayName,
+			lastActivity: row.lastActivity,
+			inputTokens: row.inputTokens,
+			outputTokens: row.outputTokens,
+			cacheCreationTokens: row.cacheCreationTokens,
+			cacheReadTokens: row.cacheReadTokens,
+			totalTokens:
+				row.inputTokens + row.outputTokens + row.cacheCreationTokens + row.cacheReadTokens,
+			totalCost,
+			modelsUsed: [...row.modelsUsed],
+			modelBreakdowns: breakdowns,
+		});
+	}
+
+	return results;
+}
+
 export async function loadMultiToolDailyReport(
 	options: MultiToolReportOptions,
 ): Promise<MultiToolReport<MultiToolDailyRow>> {
@@ -1251,6 +1486,8 @@ export async function loadMultiToolDailyReport(
 					return loadPiDailyRows(options);
 				case 'amp':
 					return loadAmpDailyRows(options);
+				case 'hermes':
+					return loadHermesDailyRows(options);
 			}
 		},
 	);
@@ -1280,6 +1517,8 @@ export async function loadMultiToolMonthlyReport(
 					return loadPiMonthlyRows(options);
 				case 'amp':
 					return loadAmpMonthlyRows(options);
+				case 'hermes':
+					return loadHermesMonthlyRows(options);
 			}
 		},
 	);
@@ -1309,6 +1548,8 @@ export async function loadMultiToolSessionReport(
 					return loadPiSessionRows(options);
 				case 'amp':
 					return loadAmpSessionRows(options);
+				case 'hermes':
+					return loadHermesSessionRows(options);
 			}
 		},
 	);
