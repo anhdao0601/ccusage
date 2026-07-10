@@ -619,6 +619,50 @@ impl PricingMap {
                     .unwrap_or(1.0),
             },
         );
+        let gpt_5_6_sol = Pricing {
+            input: 5e-6,
+            output: 30e-6,
+            cache_create: 6.25e-6,
+            cache_read: 0.5e-6,
+            cache_read_explicit: true,
+            input_above_200k: None,
+            output_above_200k: None,
+            cache_create_above_200k: None,
+            cache_read_above_200k: None,
+            fast_multiplier: 1.0,
+        };
+        self.entries.insert("gpt-5.6".to_string(), gpt_5_6_sol);
+        self.entries.insert("gpt-5.6-sol".to_string(), gpt_5_6_sol);
+        self.entries.insert(
+            "gpt-5.6-terra".to_string(),
+            Pricing {
+                input: 2.5e-6,
+                output: 15e-6,
+                cache_create: 3.125e-6,
+                cache_read: 0.25e-6,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                fast_multiplier: 1.0,
+            },
+        );
+        self.entries.insert(
+            "gpt-5.6-luna".to_string(),
+            Pricing {
+                input: 1e-6,
+                output: 6e-6,
+                cache_create: 1.25e-6,
+                cache_read: 0.1e-6,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                fast_multiplier: 1.0,
+            },
+        );
         self.entries.insert(
             "grok-4.3".to_string(),
             Pricing {
@@ -778,6 +822,9 @@ impl PricingMap {
             },
         );
         self.context_limits.insert("gpt-5.5".to_string(), 1_050_000);
+        for model in ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+            self.context_limits.insert(model.to_string(), 1_050_000);
+        }
         self.context_limits
             .insert("grok-4.3".to_string(), 1_000_000);
         self.context_limits.insert("gpt-5.4".to_string(), 1_050_000);
@@ -872,8 +919,15 @@ fn pricing_key_matches(candidate: &str, model: &str, normalized_model: &str) -> 
         return true;
     }
     let normalized_candidate = normalized_pricing_key(candidate);
-    contains_pricing_key(normalized_model, normalized_candidate.as_ref())
+    if contains_pricing_key(normalized_model, normalized_candidate.as_ref())
         || contains_pricing_key(normalized_candidate.as_ref(), normalized_model)
+    {
+        return true;
+    }
+    normalized_candidate
+        .rsplit('/')
+        .next()
+        .is_some_and(|candidate_model| contains_pricing_key(normalized_model, candidate_model))
 }
 
 /// Finds a key only when the surrounding bytes are non-alphanumeric boundaries.
@@ -926,8 +980,8 @@ fn suffix_starts_with_numeric_model_version(key: &str, suffix: &str) -> bool {
 
 /// Normalizes known model separator variants without allocating for canonical keys.
 fn normalized_pricing_key(value: &str) -> Cow<'_, str> {
-    if value.contains(['.', '@']) {
-        Cow::Owned(value.replace(['.', '@'], "-"))
+    if value.contains(['.', '@']) || value.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        Cow::Owned(value.to_ascii_lowercase().replace(['.', '@'], "-"))
     } else {
         Cow::Borrowed(value)
     }
@@ -1088,6 +1142,23 @@ mod tests {
         assert!(glm_52.cache_read_explicit);
         assert_eq!(pricing.find("glm-5.2[1m]").unwrap().input, glm_52.input);
         assert_eq!(pricing.context_limit("glm-5.2[1m]"), Some(1_000_000));
+    }
+
+    #[test]
+    fn embedded_pricing_resolves_hugging_face_model_paths() {
+        let pricing = PricingMap::load_embedded();
+        let glm_52 = pricing.find("glm-5.2").unwrap();
+        let hf_path = pricing
+            .find("/data/models/hf/zai-org__GLM-5.2-FP8")
+            .unwrap();
+
+        assert_eq!(hf_path.input, glm_52.input);
+        assert_eq!(hf_path.output, glm_52.output);
+        assert_eq!(hf_path.cache_read, glm_52.cache_read);
+        assert_eq!(
+            pricing.context_limit("/data/models/hf/zai-org__GLM-5.2-FP8"),
+            pricing.context_limit("glm-5.2")
+        );
     }
 
     #[test]
@@ -1355,6 +1426,31 @@ mod tests {
         assert!(gpt_55.cache_read_explicit);
         assert_eq!(gpt_55.fast_multiplier, 2.5);
         assert_eq!(pricing.context_limit("gpt-5.5"), Some(1_050_000));
+    }
+
+    #[test]
+    fn embedded_pricing_includes_gpt_5_6_family_for_offline_codex_reports() {
+        let pricing = PricingMap::load_embedded();
+        let sol = pricing.find("gpt-5.6-sol").unwrap();
+        let terra = pricing.find("gpt-5.6-terra").unwrap();
+        let luna = pricing.find("gpt-5.6-luna").unwrap();
+
+        assert_eq!(pricing.find("gpt-5.6").unwrap().input, sol.input);
+        assert_eq!(sol.input, 5e-6);
+        assert_eq!(sol.output, 30e-6);
+        assert_eq!(sol.cache_create, 6.25e-6);
+        assert_eq!(sol.cache_read, 0.5e-6);
+        assert_eq!(terra.input, 2.5e-6);
+        assert_eq!(terra.output, 15e-6);
+        assert_eq!(terra.cache_create, 3.125e-6);
+        assert_eq!(terra.cache_read, 0.25e-6);
+        assert_eq!(luna.input, 1e-6);
+        assert_eq!(luna.output, 6e-6);
+        assert_eq!(luna.cache_create, 1.25e-6);
+        assert_eq!(luna.cache_read, 0.1e-6);
+        assert_eq!(pricing.context_limit("gpt-5.6-sol"), Some(1_050_000));
+        assert_eq!(pricing.context_limit("gpt-5.6-terra"), Some(1_050_000));
+        assert_eq!(pricing.context_limit("gpt-5.6-luna"), Some(1_050_000));
     }
 
     #[test]

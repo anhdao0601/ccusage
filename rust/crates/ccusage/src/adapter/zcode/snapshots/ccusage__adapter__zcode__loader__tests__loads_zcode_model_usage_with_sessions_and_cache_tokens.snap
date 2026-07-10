@@ -1,0 +1,29 @@
+---
+source: crates/ccusage/src/adapter/zcode/loader.rs
+expression: "super::super::report::report_from_rows(&rows,\ncrate::cli::AgentReportKind::Session,)"
+---
+{
+  "sessions": [
+    {
+      "cacheCreationTokens": 20,
+      "cacheReadTokens": 30,
+      "inputTokens": 50,
+      "messageCount": 1,
+      "modelsUsed": [
+        "GLM-5.2"
+      ],
+      "outputTokens": 25,
+      "sessionId": "sess_test",
+      "totalCost": 0.00022279999999999997,
+      "totalTokens": 125
+    }
+  ],
+  "totals": {
+    "cacheCreationTokens": 20,
+    "cacheReadTokens": 30,
+    "inputTokens": 50,
+    "outputTokens": 25,
+    "totalCost": 0.00022279999999999997,
+    "totalTokens": 125
+  }
+}

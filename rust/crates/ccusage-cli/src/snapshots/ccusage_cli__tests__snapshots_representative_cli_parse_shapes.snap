@@ -1,6 +1,5 @@
 ---
 source: crates/ccusage-cli/src/tests.rs
-assertion_line: 747
 expression: cases
 ---
 [
@@ -203,6 +202,56 @@ expression: cases
           "until": null
         },
         "type": "ncode"
+      },
+      "shared": {
+        "breakdown": false,
+        "color": false,
+        "compact": false,
+        "config": null,
+        "debug": false,
+        "debugSamples": 5,
+        "jq": null,
+        "json": false,
+        "mode": "Auto",
+        "noColor": false,
+        "noOffline": false,
+        "offline": false,
+        "order": "Asc",
+        "since": null,
+        "singleThread": false,
+        "timezone": null,
+        "until": null
+      }
+    }
+  },
+  {
+    "case": "zcode session",
+    "cli": {
+      "command": {
+        "codexSpeed": "Auto",
+        "kind": "Session",
+        "openClawPath": null,
+        "piPath": null,
+        "shared": {
+          "breakdown": false,
+          "color": false,
+          "compact": false,
+          "config": null,
+          "debug": false,
+          "debugSamples": 5,
+          "jq": null,
+          "json": true,
+          "mode": "Auto",
+          "noColor": false,
+          "noOffline": false,
+          "offline": false,
+          "order": "Asc",
+          "since": null,
+          "singleThread": false,
+          "timezone": null,
+          "until": null
+        },
+        "type": "zcode"
       },
       "shared": {
         "breakdown": false,

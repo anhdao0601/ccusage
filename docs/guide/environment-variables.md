@@ -10,6 +10,8 @@ ccusage detects supported data source files from conventional locations by defau
 | --------------------------------- | ------------ | ---------------------------------- |
 | `CLAUDE_CONFIG_DIR`               | Claude Code  | `~/.config/claude` and `~/.claude` |
 | `NCODE_CONFIG_DIR`                | NCode        | `~/.ncode`                         |
+| `ZCODE_DATA_DIR`                  | ZCode        | `ZCODE_STORAGE_DIR` or `~/.zcode`  |
+| `ZCODE_STORAGE_DIR`               | ZCode        | `~/.zcode`                         |
 | `CODEX_HOME`                      | Codex        | `~/.codex`                         |
 | `OPENCODE_DATA_DIR`               | OpenCode     | `~/.local/share/opencode`          |
 | `AMP_DATA_DIR`                    | Amp          | `~/.local/share/amp`               |
@@ -30,6 +32,7 @@ Example:
 ```bash
 export CODEX_HOME="/path/to/codex,/archive/codex,/path/to/codex-exec-jsonl"
 export NCODE_CONFIG_DIR="/path/to/ncode,/archive/ncode"
+export ZCODE_DATA_DIR="/path/to/zcode,/archive/zcode"
 export OPENCODE_DATA_DIR="/path/to/opencode,/archive/opencode"
 export AMP_DATA_DIR="/path/to/amp,/archive/amp"
 export DROID_SESSIONS_DIR="/path/to/factory/sessions,/archive/factory/sessions"
@@ -55,6 +58,14 @@ Specifies where ccusage should look for Claude Code data. See [Claude Code](/gui
 ## NCODE_CONFIG_DIR
 
 Specifies where ccusage should look for NCode Claude-compatible transcript data. Each directory should contain a `projects/` directory, or point directly at the `projects/` directory.
+
+## ZCODE_DATA_DIR
+
+Specifies one ZCode data root or comma-separated roots. Each root contains the session database at `cli/db/db.sqlite`.
+
+## ZCODE_STORAGE_DIR
+
+ZCode's native storage-root override. ccusage honors it when `ZCODE_DATA_DIR` is unset.
 
 ## LOG_LEVEL
 
@@ -216,7 +227,7 @@ To see which environment variables are being used:
 
 ```bash
 # Show all environment variables
-env | grep -E "CLAUDE|NCODE|CODEX|OPENCODE|AMP|DROID|CODEBUFF|HERMES|PI_AGENT|GOOSE|OPENCLAW|KILO|KIMI|QWEN|COPILOT|GEMINI|CCUSAGE|LOG_LEVEL"
+env | grep -E "CLAUDE|NCODE|ZCODE|CODEX|OPENCODE|AMP|DROID|CODEBUFF|HERMES|PI_AGENT|GOOSE|OPENCLAW|KILO|KIMI|QWEN|COPILOT|GEMINI|CCUSAGE|LOG_LEVEL"
 
 # Debug mode shows environment variable usage
 LOG_LEVEL=4 ccusage daily --debug

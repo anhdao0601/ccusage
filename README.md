@@ -27,7 +27,7 @@ ccusage session --tool all
 ccusage monthly --tool all
 ```
 
-Providers currently covered in this fork include Claude, NCode, Codex, OpenCode, pi, and Amp.
+Providers currently covered in this fork include Claude, NCode, ZCode, Codex, OpenCode, pi, and Amp.
 
 If you want the original project, use the upstream repo instead:
 

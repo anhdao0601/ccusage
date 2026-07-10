@@ -6,14 +6,16 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
   "daily": {
     "daily": [
       {
+        "cacheWriteInputTokens": 20,
         "cachedInputTokens": 110,
-        "costUSD": 0.00040425,
+        "costUSD": 0.000413,
         "date": "2026-01-02",
-        "inputTokens": 100,
+        "inputTokens": 80,
         "models": {
           "gpt-5.3-codex": {
+            "cacheWriteInputTokens": 20,
             "cachedInputTokens": 110,
-            "inputTokens": 100,
+            "inputTokens": 80,
             "isFallback": true,
             "outputTokens": 15,
             "reasoningOutputTokens": 2,
@@ -25,12 +27,14 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
         "totalTokens": 227
       },
       {
+        "cacheWriteInputTokens": 0,
         "cachedInputTokens": 0,
         "costUSD": 0.0000065,
         "date": "2026-01-05",
         "inputTokens": 10,
         "models": {
           "gpt-5-mini": {
+            "cacheWriteInputTokens": 0,
             "cachedInputTokens": 0,
             "inputTokens": 10,
             "isFallback": false,
@@ -45,9 +49,10 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
       }
     ],
     "totals": {
+      "cacheWriteInputTokens": 20,
       "cachedInputTokens": 110,
-      "costUSD": 0.00041075,
-      "inputTokens": 110,
+      "costUSD": 0.0004195,
+      "inputTokens": 90,
       "outputTokens": 17,
       "reasoningOutputTokens": 2,
       "totalTokens": 239
@@ -56,11 +61,13 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
   "monthly": {
     "monthly": [
       {
+        "cacheWriteInputTokens": 20,
         "cachedInputTokens": 110,
-        "costUSD": 0.00041075,
-        "inputTokens": 110,
+        "costUSD": 0.0004195,
+        "inputTokens": 90,
         "models": {
           "gpt-5-mini": {
+            "cacheWriteInputTokens": 0,
             "cachedInputTokens": 0,
             "inputTokens": 10,
             "isFallback": false,
@@ -69,8 +76,9 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
             "totalTokens": 12
           },
           "gpt-5.3-codex": {
+            "cacheWriteInputTokens": 20,
             "cachedInputTokens": 110,
-            "inputTokens": 100,
+            "inputTokens": 80,
             "isFallback": true,
             "outputTokens": 15,
             "reasoningOutputTokens": 2,
@@ -84,9 +92,10 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
       }
     ],
     "totals": {
+      "cacheWriteInputTokens": 20,
       "cachedInputTokens": 110,
-      "costUSD": 0.00041075,
-      "inputTokens": 110,
+      "costUSD": 0.0004195,
+      "inputTokens": 90,
       "outputTokens": 17,
       "reasoningOutputTokens": 2,
       "totalTokens": 239
@@ -95,15 +104,17 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
   "sessionFast": {
     "sessions": [
       {
+        "cacheWriteInputTokens": 20,
         "cachedInputTokens": 110,
-        "costUSD": 0.0008085,
+        "costUSD": 0.000826,
         "directory": "/workspace/api",
-        "inputTokens": 100,
+        "inputTokens": 80,
         "lastActivity": "2026-01-02T00:05:00.000Z",
         "models": {
           "gpt-5.3-codex": {
+            "cacheWriteInputTokens": 20,
             "cachedInputTokens": 110,
-            "inputTokens": 100,
+            "inputTokens": 80,
             "isFallback": true,
             "outputTokens": 15,
             "reasoningOutputTokens": 2,
@@ -117,6 +128,7 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
         "totalTokens": 227
       },
       {
+        "cacheWriteInputTokens": 0,
         "cachedInputTokens": 0,
         "costUSD": 0.000013,
         "directory": "/workspace/web",
@@ -124,6 +136,7 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
         "lastActivity": "2026-01-05T23:59:59.000Z",
         "models": {
           "gpt-5-mini": {
+            "cacheWriteInputTokens": 0,
             "cachedInputTokens": 0,
             "inputTokens": 10,
             "isFallback": false,
@@ -140,9 +153,10 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
       }
     ],
     "totals": {
+      "cacheWriteInputTokens": 20,
       "cachedInputTokens": 110,
-      "costUSD": 0.0008215,
-      "inputTokens": 110,
+      "costUSD": 0.000839,
+      "inputTokens": 90,
       "outputTokens": 17,
       "reasoningOutputTokens": 2,
       "totalTokens": 239
@@ -150,22 +164,25 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
   },
   "weekly": {
     "totals": {
+      "cacheWriteInputTokens": 20,
       "cachedInputTokens": 110,
-      "costUSD": 0.00041075,
-      "inputTokens": 110,
+      "costUSD": 0.0004195,
+      "inputTokens": 90,
       "outputTokens": 17,
       "reasoningOutputTokens": 2,
       "totalTokens": 239
     },
     "weekly": [
       {
+        "cacheWriteInputTokens": 20,
         "cachedInputTokens": 110,
-        "costUSD": 0.00040425,
-        "inputTokens": 100,
+        "costUSD": 0.000413,
+        "inputTokens": 80,
         "models": {
           "gpt-5.3-codex": {
+            "cacheWriteInputTokens": 20,
             "cachedInputTokens": 110,
-            "inputTokens": 100,
+            "inputTokens": 80,
             "isFallback": true,
             "outputTokens": 15,
             "reasoningOutputTokens": 2,
@@ -178,11 +195,13 @@ expression: "serde_json::json!({\n    \"daily\":\n    report_json(&events, Agent
         "week": "2025-12-29"
       },
       {
+        "cacheWriteInputTokens": 0,
         "cachedInputTokens": 0,
         "costUSD": 0.0000065,
         "inputTokens": 10,
         "models": {
           "gpt-5-mini": {
+            "cacheWriteInputTokens": 0,
             "cachedInputTokens": 0,
             "inputTokens": 10,
             "isFallback": false,

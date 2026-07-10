@@ -4,7 +4,7 @@
 
 > ⚠️ Codex log support is experimental while the Codex CLI log format continues to evolve.
 
-ccusage can read OpenAI Codex CLI session logs as one of its supported local data sources. Codex uses the same unified and focused report model as Claude Code, OpenCode, Amp, Droid, Codebuff, Hermes Agent, pi-agent, Goose, OpenClaw, Kilo, Kimi, Qwen, GitHub Copilot CLI, and Gemini CLI.
+ccusage can read OpenAI Codex CLI session logs as one of its supported local data sources. Codex uses the same unified and focused report model as Claude Code, NCode, ZCode, OpenCode, Amp, Droid, Codebuff, Hermes Agent, pi-agent, Goose, OpenClaw, Kilo, Kimi, Qwen, GitHub Copilot CLI, and Gemini CLI.
 
 ## Focused Views
 
@@ -45,12 +45,12 @@ These views support `--json`, `--compact`, `--offline`, and `--speed auto|standa
 
 ## What Gets Calculated
 
-- **Token deltas** – Each `event_msg` with `payload.type === "token_count"` reports cumulative totals. The CLI subtracts the previous totals to recover per-turn token usage (input, cached input, output, reasoning, total).
+- **Token deltas** – Each `event_msg` with `payload.type === "token_count"` reports cumulative totals. The CLI subtracts the previous totals to recover per-turn token usage (input, cache write, cached input, output, reasoning, total).
 - **Per-model grouping** – The `turn_context` metadata specifies the active model. We aggregate tokens per day/month and per model. Sessions lacking model metadata (seen in early September 2025 builds) are skipped.
-- **Pricing** – Rates come from LiteLLM's pricing dataset via the shared `LiteLLMPricingFetcher`. Model aliases such as `gpt-5.5` are resolved through the pricing cache when available.
+- **Pricing** – Rates come from the embedded and refreshed pricing datasets. Offline pricing includes `gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`.
 - **Speed pricing** – `--speed auto` is the default. It reads `config.toml` from each `CODEX_HOME` root and applies fast pricing when any Codex config has `service_tier = "priority"` or legacy `service_tier = "fast"` configured. Fast mode uses the model-specific LiteLLM multiplier when available and otherwise falls back to 2x pricing. Pass `--speed fast` or `--speed standard` to override config-based detection.
 - **Legacy fallback** – Early September 2025 logs that never recorded `turn_context` metadata are still included; the CLI assumes `gpt-5` for pricing so you can review the tokens even though the model tag is missing (the JSON output also marks these rows with `"isFallback": true`).
-- **Cost formula** – Non-cached input uses the standard input price; cached input uses the cache-read price (falling back to the input price when missing); and output tokens are billed at the output price. All prices are per million tokens. Reasoning tokens may be shown for reference, but they are part of the output charge and are not billed separately.
+- **Cost formula** – Regular input uses the standard input price, GPT-5.6 cache writes use 1.25x the input price, cached input uses the cache-read price (or the input price when the pricing source omits a cache-read rate), and output tokens use the output price. All prices are per million tokens. Reasoning tokens are shown for reference and remain part of the output charge.
 - **Totals and reports** – Daily, monthly, and session views display per-model breakdowns, overall totals, and optional JSON for automation.
 
 ## Environment Variables
@@ -60,7 +60,7 @@ These views support `--json`, `--compact`, `--offline`, and `--speed auto|standa
 | `CODEX_HOME` | Override the root directory, or comma-separated directories, containing Codex homes or saved `codex exec --json` JSONL files |
 | `LOG_LEVEL`  | Adjust log verbosity (0 silent … 5 trace)                                                                                    |
 
-When Codex emits a model alias (for example `gpt-5.5`), the CLI automatically resolves it through the LiteLLM pricing data when possible. No manual override is needed.
+When Codex emits a model alias such as `gpt-5.6`, the CLI resolves it to the corresponding model-family price.
 
 ## Speed Pricing
 
@@ -87,11 +87,15 @@ ccusage codex monthly --json
 ccusage codex session --json
 ```
 
-Session JSON includes per-model breakdowns, cached token counts, `lastActivity`, and `isFallback` flags for any events that required the legacy `gpt-5` pricing fallback.
+Session JSON includes per-model breakdowns, `cacheWriteInputTokens`, cached token counts, `lastActivity`, and `isFallback` flags for events that required the legacy `gpt-5` pricing fallback.
 
 Have feedback or ideas? [Open an issue](https://github.com/ryoppippi/ccusage/issues/new) so we can improve Codex support.
 
 ## Troubleshooting
+
+::: details Why do GPT-5.6 cache writes show zero?
+Current Codex session `token_count` events omit the API's `cache_write_tokens` field. ccusage reads that field whenever a session records it; existing events therefore contribute zero cache-write tokens. The OpenAI API reports cache writes separately from cache reads as described in the [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching).
+:::
 
 ::: details Why are there no entries before September 2025?
 OpenAI's Codex CLI started emitting `token_count` events in [commit 0269096](https://github.com/openai/codex/commit/0269096229e8c8bd95185173706807dc10838c7a) (2025-09-06). Earlier session logs simply don't contain token usage metrics, so `ccusage codex` has nothing to aggregate. If you need historic data, rerun those sessions after that Codex update.

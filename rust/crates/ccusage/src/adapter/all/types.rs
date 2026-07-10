@@ -146,6 +146,7 @@ fn static_agent(agent: &str) -> Option<&'static str> {
         "gemini" => "gemini",
         "kimi" => "kimi",
         "qwen" => "qwen",
+        "zcode" => "zcode",
         _ => return None,
     })
 }

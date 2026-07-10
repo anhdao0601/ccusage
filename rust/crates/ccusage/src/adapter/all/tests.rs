@@ -431,10 +431,11 @@ fn renders_all_report_json_totals_by_source_from_agent_breakdowns() {
 }
 
 #[test]
-fn uses_non_cached_codex_input_tokens_in_all_rows() {
+fn maps_codex_cache_reads_and_writes_into_all_rows() {
     let mut group = CodexGroup {
         input_tokens: 100,
-        cached_input_tokens: 90,
+        cached_input_tokens: 20,
+        cache_write_tokens: 60,
         output_tokens: 5,
         total_tokens: 105,
         ..CodexGroup::default()
@@ -443,7 +444,8 @@ fn uses_non_cached_codex_input_tokens_in_all_rows() {
         "gpt-5".to_string(),
         CodexModelUsage {
             input_tokens: 100,
-            cached_input_tokens: 90,
+            cached_input_tokens: 20,
+            cache_write_tokens: 60,
             output_tokens: 5,
             total_tokens: 105,
             ..CodexModelUsage::default()
@@ -456,8 +458,9 @@ fn uses_non_cached_codex_input_tokens_in_all_rows() {
         CodexSpeed::Standard,
     );
 
-    assert_eq!(row.input_tokens, 10);
-    assert_eq!(row.cache_read_tokens, 90);
+    assert_eq!(row.input_tokens, 20);
+    assert_eq!(row.cache_creation_tokens, 60);
+    assert_eq!(row.cache_read_tokens, 20);
     assert_eq!(row.total_tokens, 105);
 }
 

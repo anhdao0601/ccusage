@@ -221,6 +221,7 @@ fn command_snapshot(command: Option<Command>) -> Value {
         Some(Command::Gemini(args)) => agent_command_snapshot("gemini", args),
         Some(Command::Kimi(args)) => agent_command_snapshot("kimi", args),
         Some(Command::Qwen(args)) => agent_command_snapshot("qwen", args),
+        Some(Command::ZCode(args)) => agent_command_snapshot("zcode", args),
         Some(Command::OpenClaw(args)) => agent_command_snapshot("openclaw", args),
         Some(Command::Mcp(args)) => json!({
             "type": "mcp",
@@ -505,7 +506,7 @@ fn root_help_lists_agent_namespaces_without_nested_commands() {
     let help = help_text();
     let agents = [
         "claude", "ncode", "codex", "opencode", "amp", "droid", "codebuff", "hermes", "pi",
-        "goose", "kilo", "copilot", "gemini", "kimi", "qwen", "openclaw",
+        "goose", "kilo", "copilot", "gemini", "kimi", "qwen", "zcode", "openclaw",
     ];
 
     for agent in agents {
@@ -677,6 +678,10 @@ fn snapshots_representative_cli_parse_shapes() {
         json!({
             "case": "ncode daily",
             "cli": cli_snapshot(parse(&["ccusage", "ncode", "daily", "--json"])),
+        }),
+        json!({
+            "case": "zcode session",
+            "cli": cli_snapshot(parse(&["ccusage", "zcode", "session", "--json"])),
         }),
         json!({
             "case": "codex monthly fast",
@@ -906,6 +911,16 @@ fn parses_ncode_daily_options() {
     assert_eq!(args.kind, AgentReportKind::Daily);
     assert!(args.shared.json);
     assert_eq!(args.shared.since.as_deref(), Some("20260102"));
+}
+
+#[test]
+fn parses_zcode_session_options() {
+    let cli = parse(&["ccusage", "zcode", "session", "--json"]);
+    let Some(Command::ZCode(args)) = cli.command else {
+        panic!("expected zcode command");
+    };
+    assert_eq!(args.kind, AgentReportKind::Session);
+    assert!(args.shared.json);
 }
 
 #[test]

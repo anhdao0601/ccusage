@@ -53,7 +53,11 @@ fn group_json(
     speed: CodexSpeed,
 ) -> Value {
     let cost = calculate_group_cost(group, pricing, speed);
-    let input_tokens = non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+    let input_tokens = non_cached_input_tokens(
+        group.input_tokens,
+        group.cached_input_tokens,
+        group.cache_write_tokens,
+    );
     let models = group
         .models
         .iter()
@@ -63,6 +67,7 @@ fn group_json(
         period_key(kind): period,
         "inputTokens": input_tokens,
         "cachedInputTokens": group.cached_input_tokens,
+        "cacheWriteInputTokens": group.cache_write_tokens,
         "outputTokens": group.output_tokens,
         "reasoningOutputTokens": group.reasoning_output_tokens,
         "totalTokens": group.total_tokens,
@@ -78,14 +83,25 @@ fn group_json(
     row
 }
 
-pub(crate) fn non_cached_input_tokens(input_tokens: u64, cached_input_tokens: u64) -> u64 {
-    input_tokens.saturating_sub(cached_input_tokens)
+pub(crate) fn non_cached_input_tokens(
+    input_tokens: u64,
+    cached_input_tokens: u64,
+    cache_write_tokens: u64,
+) -> u64 {
+    input_tokens
+        .saturating_sub(cached_input_tokens)
+        .saturating_sub(cache_write_tokens)
 }
 
 fn model_usage_json(usage: &CodexModelUsage) -> Value {
     json!({
-        "inputTokens": non_cached_input_tokens(usage.input_tokens, usage.cached_input_tokens),
+        "inputTokens": non_cached_input_tokens(
+            usage.input_tokens,
+            usage.cached_input_tokens,
+            usage.cache_write_tokens,
+        ),
         "cachedInputTokens": usage.cached_input_tokens,
+        "cacheWriteInputTokens": usage.cache_write_tokens,
         "outputTokens": usage.output_tokens,
         "reasoningOutputTokens": usage.reasoning_output_tokens,
         "totalTokens": usage.total_tokens,
@@ -100,13 +116,19 @@ fn totals_json<'a>(
 ) -> Value {
     let mut input = 0;
     let mut cached = 0;
+    let mut cache_write = 0;
     let mut output = 0;
     let mut reasoning = 0;
     let mut total = 0;
     let mut cost = 0.0;
     for group in groups {
-        input += non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+        input += non_cached_input_tokens(
+            group.input_tokens,
+            group.cached_input_tokens,
+            group.cache_write_tokens,
+        );
         cached += group.cached_input_tokens;
+        cache_write += group.cache_write_tokens;
         output += group.output_tokens;
         reasoning += group.reasoning_output_tokens;
         total += group.total_tokens;
@@ -115,6 +137,7 @@ fn totals_json<'a>(
     json!({
         "inputTokens": input,
         "cachedInputTokens": cached,
+        "cacheWriteInputTokens": cache_write,
         "outputTokens": output,
         "reasoningOutputTokens": reasoning,
         "totalTokens": total,
@@ -131,7 +154,11 @@ pub(crate) fn calculate_codex_model_cost(
     let Some(pricing) = pricing.find(model) else {
         return 0.0;
     };
-    let non_cached_input = usage.input_tokens.saturating_sub(usage.cached_input_tokens);
+    let non_cached_input = non_cached_input_tokens(
+        usage.input_tokens,
+        usage.cached_input_tokens,
+        usage.cache_write_tokens,
+    );
     let multiplier = if matches!(speed, CodexSpeed::Fast) {
         if pricing.fast_multiplier == 1.0 {
             2.0
@@ -147,6 +174,7 @@ pub(crate) fn calculate_codex_model_cost(
         pricing.input
     };
     (non_cached_input as f64 * pricing.input
+        + usage.cache_write_tokens as f64 * pricing.cache_create
         + usage.cached_input_tokens as f64 * cache_read
         + usage.output_tokens as f64 * pricing.output)
         * multiplier
@@ -233,6 +261,7 @@ pub(super) fn print_table_from_groups(
             "Input",
             "Output",
             "Reasoning",
+            "Cache Write",
             "Cache Read",
             "Total Tokens",
             "Cost (USD)",
@@ -246,6 +275,7 @@ pub(super) fn print_table_from_groups(
             Align::Right,
             Align::Right,
             Align::Right,
+            Align::Right,
         ],
         crate::terminal_style(shared),
     )
@@ -253,15 +283,21 @@ pub(super) fn print_table_from_groups(
     .with_date_compaction(true);
     let mut total_input = 0;
     let mut total_cached = 0;
+    let mut total_cache_write = 0;
     let mut total_output = 0;
     let mut total_reasoning = 0;
     let mut total_tokens = 0;
     let mut total_cost = 0.0;
     for (label, group) in groups {
-        let input_tokens = non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+        let input_tokens = non_cached_input_tokens(
+            group.input_tokens,
+            group.cached_input_tokens,
+            group.cache_write_tokens,
+        );
         let cost = calculate_group_cost(group, pricing, speed);
         total_input += input_tokens;
         total_cached += group.cached_input_tokens;
+        total_cache_write += group.cache_write_tokens;
         total_output += group.output_tokens;
         total_reasoning += group.reasoning_output_tokens;
         total_tokens += group.total_tokens;
@@ -273,6 +309,7 @@ pub(super) fn print_table_from_groups(
             format_number(input_tokens),
             format_number(group.output_tokens),
             format_number(group.reasoning_output_tokens),
+            format_number(group.cache_write_tokens),
             format_number(group.cached_input_tokens),
             format_number(group.total_tokens),
             format_currency(cost),
@@ -285,6 +322,7 @@ pub(super) fn print_table_from_groups(
         color(shared, format_number(total_input), Color::Yellow),
         color(shared, format_number(total_output), Color::Yellow),
         color(shared, format_number(total_reasoning), Color::Yellow),
+        color(shared, format_number(total_cache_write), Color::Yellow),
         color(shared, format_number(total_cached), Color::Yellow),
         color(shared, format_number(total_tokens), Color::Yellow),
         color(shared, format_currency(total_cost), Color::Yellow),
@@ -313,6 +351,7 @@ fn print_codex_session_table(
             "Input",
             "Output",
             "Reasoning",
+            "Cache Write",
             "Cache Read",
             "Total Tokens",
             "Cost (USD)",
@@ -329,6 +368,7 @@ fn print_codex_session_table(
             Align::Right,
             Align::Right,
             Align::Right,
+            Align::Right,
             Align::Left,
         ],
         crate::terminal_style(shared),
@@ -337,12 +377,17 @@ fn print_codex_session_table(
     let mut total_input = 0;
     let mut total_output = 0;
     let mut total_reasoning = 0;
+    let mut total_cache_write = 0;
     let mut total_cached = 0;
     let mut total_tokens = 0;
     let mut total_cost = 0.0;
     for (period, group) in groups {
         let cost = calculate_group_cost(group, pricing, speed);
-        let input_tokens = non_cached_input_tokens(group.input_tokens, group.cached_input_tokens);
+        let input_tokens = non_cached_input_tokens(
+            group.input_tokens,
+            group.cached_input_tokens,
+            group.cache_write_tokens,
+        );
         let (directory, file_name) = period.rfind('/').map_or(("", period.as_str()), |index| {
             (&period[..index], &period[index + 1..])
         });
@@ -356,6 +401,7 @@ fn print_codex_session_table(
             format_number(input_tokens),
             format_number(group.output_tokens),
             format_number(group.reasoning_output_tokens),
+            format_number(group.cache_write_tokens),
             format_number(group.cached_input_tokens),
             format_number(group.total_tokens),
             format_currency(cost),
@@ -364,6 +410,7 @@ fn print_codex_session_table(
         total_input += input_tokens;
         total_output += group.output_tokens;
         total_reasoning += group.reasoning_output_tokens;
+        total_cache_write += group.cache_write_tokens;
         total_cached += group.cached_input_tokens;
         total_tokens += group.total_tokens;
         total_cost += cost;
@@ -377,6 +424,7 @@ fn print_codex_session_table(
         color(shared, format_number(total_input), Color::Yellow),
         color(shared, format_number(total_output), Color::Yellow),
         color(shared, format_number(total_reasoning), Color::Yellow),
+        color(shared, format_number(total_cache_write), Color::Yellow),
         color(shared, format_number(total_cached), Color::Yellow),
         color(shared, format_number(total_tokens), Color::Yellow),
         color(shared, format_currency(total_cost), Color::Yellow),

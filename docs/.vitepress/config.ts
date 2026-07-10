@@ -70,6 +70,7 @@ export default defineConfig({
 					items: [
 						{ text: 'Claude Code', link: '/guide/claude/' },
 						{ text: 'NCode', link: '/guide/ncode/' },
+						{ text: 'ZCode', link: '/guide/zcode/' },
 						{ text: 'Codex', link: '/guide/codex/' },
 						{ text: 'OpenCode', link: '/guide/opencode/' },
 						{ text: 'Amp', link: '/guide/amp/' },

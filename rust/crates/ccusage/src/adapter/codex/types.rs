@@ -152,6 +152,8 @@ struct CodexRawUsageFields {
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     cached_tokens: Option<u64>,
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
+    cache_write_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     output_tokens: Option<u64>,
     #[serde(default, deserialize_with = "deserialize_optional_u64_lossy")]
     completion_tokens: Option<u64>,
@@ -192,6 +194,7 @@ impl<'de> Deserialize<'de> for CodexRawUsage {
                 .or(fields.cache_read_input_tokens)
                 .or(fields.cached_tokens)
                 .unwrap_or(0),
+            cache_write_tokens: fields.cache_write_tokens.unwrap_or(0),
             output_tokens: output,
             reasoning_output_tokens: reasoning,
             total_tokens: fields

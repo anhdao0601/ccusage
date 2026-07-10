@@ -11,7 +11,7 @@ use crate::{
 
 const TOOL_FILTER_AGENTS: &[&str] = &[
     "claude", "ncode", "codex", "opencode", "amp", "droid", "codebuff", "hermes", "pi", "goose",
-    "kilo", "copilot", "gemini", "kimi", "qwen", "openclaw",
+    "kilo", "copilot", "gemini", "kimi", "qwen", "zcode", "openclaw",
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -306,6 +306,13 @@ fn parse_command(
             "qwen",
             STANDARD_AGENT_REPORTS,
             Command::Qwen,
+        ),
+        "zcode" => parse_basic_agent_command(
+            parser,
+            shared,
+            "zcode",
+            STANDARD_AGENT_REPORTS,
+            Command::ZCode,
         ),
         "openclaw" => parse_openclaw_command(parser, shared, config),
         _ => Err(format!("Unknown command '{command}'")),
@@ -816,6 +823,7 @@ fn is_command(arg: &str) -> bool {
             | "gemini"
             | "kimi"
             | "qwen"
+            | "zcode"
     )
 }
 
@@ -976,6 +984,7 @@ fn is_agent_command(command: &str) -> bool {
             | "gemini"
             | "kimi"
             | "qwen"
+            | "zcode"
             | "openclaw"
     )
 }
@@ -989,7 +998,7 @@ fn agent_report_supported(agent: &str, report: &str) -> bool {
         "codex" => matches!(report, "daily" | "monthly" | "session"),
         "opencode" => matches!(report, "daily" | "weekly" | "monthly" | "session"),
         "ncode" | "amp" | "droid" | "codebuff" | "hermes" | "pi" | "goose" | "kilo" | "copilot"
-        | "gemini" | "kimi" | "qwen" | "openclaw" => {
+        | "gemini" | "kimi" | "qwen" | "zcode" | "openclaw" => {
             matches!(report, "daily" | "monthly" | "session")
         }
         _ => false,
@@ -1013,6 +1022,7 @@ fn agent_display_name(agent: &str) -> &'static str {
         "gemini" => "Gemini CLI",
         "kimi" => "Kimi",
         "qwen" => "Qwen",
+        "zcode" => "ZCode",
         "openclaw" => "OpenClaw",
         _ => unreachable!("agent is prevalidated"),
     }

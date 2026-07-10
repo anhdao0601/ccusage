@@ -12,9 +12,9 @@ ccusage ncode session
 
 ## Data Source
 
-| Source | Default path          |
-| ------ | --------------------- |
-| NCode  | `~/.ncode/projects/`  |
+| Source | Default path         |
+| ------ | -------------------- |
+| NCode  | `~/.ncode/projects/` |
 
 Set `NCODE_CONFIG_DIR` when NCode logs live outside the default location:
 

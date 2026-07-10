@@ -46,6 +46,7 @@ Use a data source namespace when you want the same report focused on one source:
 ```bash
 ccusage claude daily
 ccusage ncode daily
+ccusage zcode session
 ccusage codex daily
 ccusage opencode weekly
 ccusage amp session

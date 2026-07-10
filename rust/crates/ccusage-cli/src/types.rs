@@ -28,6 +28,7 @@ pub enum Command {
     Gemini(AgentCommandArgs),
     Kimi(AgentCommandArgs),
     Qwen(AgentCommandArgs),
+    ZCode(AgentCommandArgs),
     OpenClaw(AgentCommandArgs),
 }
 

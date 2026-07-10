@@ -13,7 +13,7 @@ use crate::CodexTokenUsageEvent;
 const CACHE_DIRECTORY_NAME: &str = "ccusage";
 const SESSION_INDEX_SUBDIR: &str = "indexes";
 const SESSION_INDEX_FILE_NAME: &str = "codex-session-index.json";
-const SESSION_INDEX_SCHEMA_VERSION: u64 = 2;
+const SESSION_INDEX_SCHEMA_VERSION: u64 = 3;
 #[cfg(test)]
 const TEST_ENABLE_SESSION_INDEX_ENV: &str = "CCUSAGE_TEST_ENABLE_CODEX_SESSION_INDEX";
 
@@ -173,6 +173,7 @@ mod tests {
                     model: Some("gpt-5".to_string()),
                     input_tokens: 1,
                     cached_input_tokens: 2,
+                    cache_write_tokens: 0,
                     output_tokens: 3,
                     reasoning_output_tokens: 4,
                     total_tokens: 8,

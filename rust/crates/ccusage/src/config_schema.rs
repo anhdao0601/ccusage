@@ -20,6 +20,8 @@ pub(crate) struct CcusageConfig {
     pub(crate) claude: Option<ClaudeConfig>,
     /// NCode configuration.
     pub(crate) ncode: Option<NCodeConfig>,
+    /// ZCode configuration.
+    pub(crate) zcode: Option<ZCodeConfig>,
     /// Codex configuration.
     pub(crate) codex: Option<CodexConfig>,
     /// OpenCode configuration.
@@ -89,6 +91,21 @@ pub(crate) struct NCodeConfig {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NCodeCommandsConfig {
+    pub(crate) daily: Option<SharedOptions>,
+    pub(crate) monthly: Option<SharedOptions>,
+    pub(crate) session: Option<SharedOptions>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ZCodeConfig {
+    pub(crate) defaults: Option<SharedOptions>,
+    pub(crate) commands: Option<ZCodeCommandsConfig>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ZCodeCommandsConfig {
     pub(crate) daily: Option<SharedOptions>,
     pub(crate) monthly: Option<SharedOptions>,
     pub(crate) session: Option<SharedOptions>,
@@ -1073,7 +1090,7 @@ mod tests {
             &[
                 "$schema", "amp", "claude", "codebuff", "codex", "commands", "copilot", "defaults",
                 "droid", "gemini", "goose", "hermes", "kilo", "kimi", "ncode", "opencode",
-                "openclaw", "pi", "qwen",
+                "openclaw", "pi", "qwen", "zcode",
             ],
         );
         assert!(

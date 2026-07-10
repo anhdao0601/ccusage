@@ -131,6 +131,9 @@ pub(crate) fn all_report_sources(shared: &SharedArgs) -> Vec<ReportSource> {
     if include("qwen") {
         sources.extend(qwen_sources());
     }
+    if include("zcode") {
+        sources.extend(zcode_sources());
+    }
     sources
 }
 
@@ -667,6 +670,33 @@ fn qwen_sources() -> Vec<ReportSource> {
         .enumerate()
         .map(|(index, path)| {
             recursive_extensions(format!("qwen:{index}"), path.join("projects"), &["jsonl"])
+        })
+        .collect()
+}
+
+fn zcode_sources() -> Vec<ReportSource> {
+    let dirs = env::var("ZCODE_DATA_DIR")
+        .ok()
+        .map(|raw| env_paths(&raw))
+        .or_else(|| {
+            env::var("ZCODE_STORAGE_DIR")
+                .ok()
+                .filter(|path| !path.trim().is_empty())
+                .map(|path| vec![PathBuf::from(path)])
+        })
+        .or_else(|| crate::home::home_dir().map(|home| vec![home.join(".zcode")]))
+        .unwrap_or_default();
+    dirs.into_iter()
+        .enumerate()
+        .flat_map(|(index, path)| {
+            let database = path.join("cli/db/db.sqlite");
+            [
+                exact_file(format!("zcode:{index}:database"), database.clone()),
+                exact_file(
+                    format!("zcode:{index}:wal"),
+                    database.with_file_name("db.sqlite-wal"),
+                ),
+            ]
         })
         .collect()
 }

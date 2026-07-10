@@ -198,6 +198,7 @@ fn dedupe_codex_events(events: &mut Vec<CodexTokenUsageEvent>) {
             event.model.as_deref().map(CompactString::new),
             event.input_tokens,
             event.cached_input_tokens,
+            event.cache_write_tokens,
             event.output_tokens,
             event.reasoning_output_tokens,
             event.total_tokens,
@@ -219,6 +220,7 @@ mod tests {
             model: Some("gpt-5".to_string()),
             input_tokens: 100,
             cached_input_tokens: 10,
+            cache_write_tokens: 0,
             output_tokens: 50,
             reasoning_output_tokens: 0,
             total_tokens: 150,
@@ -377,6 +379,46 @@ mod tests {
         assert_eq!(events[2].output_tokens, 4);
         assert_eq!(events[2].reasoning_output_tokens, 1);
         assert_eq!(events[2].total_tokens, 13);
+    }
+
+    #[test]
+    fn loads_codex_cache_write_tokens() {
+        let fixture = fs_fixture!({
+            "session.jsonl": [
+                json!({
+                    "timestamp": "2026-07-09T00:00:00.000Z",
+                    "type": "turn_context",
+                    "payload": {
+                        "model": "gpt-5.6-sol",
+                    },
+                })
+                .to_string(),
+                json!({
+                    "timestamp": "2026-07-09T00:00:01.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 120,
+                                "cached_input_tokens": 20,
+                                "cache_write_tokens": 60,
+                                "output_tokens": 30,
+                                "total_tokens": 150,
+                            },
+                        },
+                    },
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        });
+
+        let events = load_codex_events_from_directory(fixture.root(), true).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(events[0].cache_write_tokens, 60);
     }
 
     #[test]
