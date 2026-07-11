@@ -1,6 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::UNIX_EPOCH,
 };
 
@@ -37,7 +38,30 @@ enum SourceMatcher {
 struct ReportCacheEnvelope<T> {
     schema_version: u64,
     created_at: String,
+    // Cached payloads must not outlive the build that computed them: report
+    // shaping can change between builds while the cache key stays identical.
+    #[serde(default)]
+    binary: String,
     payload: T,
+}
+
+fn binary_fingerprint() -> String {
+    static FINGERPRINT: OnceLock<String> = OnceLock::new();
+    FINGERPRINT
+        .get_or_init(|| {
+            env::current_exe()
+                .and_then(fs::metadata)
+                .map(|metadata| {
+                    let mtime_ms = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                        .map_or(0, |duration| duration.as_millis());
+                    format!("{mtime_ms}:{}", metadata.len())
+                })
+                .unwrap_or_else(|_| "unknown".to_string())
+        })
+        .clone()
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +86,9 @@ pub(crate) fn with_report_cache<T>(
 where
     T: DeserializeOwned + Serialize,
 {
+    if report_cache_path("probe").is_none() {
+        return load();
+    }
     let source_fingerprint = compute_source_fingerprint(&sources);
     let read_pricing = read_pricing_fingerprint(shared);
     if let Some(pricing) = read_pricing.as_ref() {
@@ -176,7 +203,9 @@ fn cache_key(command: &str, parameters: &Value, source_fingerprint: &str, pricin
 fn read_report_cache<T: DeserializeOwned>(key: &str) -> Option<T> {
     let bytes = fs::read(report_cache_path(key)?).ok()?;
     let envelope = serde_json::from_slice::<ReportCacheEnvelope<T>>(&bytes).ok()?;
-    (envelope.schema_version == REPORT_CACHE_SCHEMA_VERSION).then_some(envelope.payload)
+    (envelope.schema_version == REPORT_CACHE_SCHEMA_VERSION
+        && envelope.binary == binary_fingerprint())
+    .then_some(envelope.payload)
 }
 
 fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
@@ -192,12 +221,18 @@ fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
     let envelope = ReportCacheEnvelope {
         schema_version: REPORT_CACHE_SCHEMA_VERSION,
         created_at: crate::format_rfc3339_millis(crate::utc_now()),
+        binary: binary_fingerprint(),
         payload,
     };
     let Ok(bytes) = serde_json::to_vec(&envelope) else {
         return;
     };
-    let temp_path = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    // Unique per write: concurrent same-key writers (per-agent loader threads,
+    // parallel tests) must never share a temp file, or the atomic rename can
+    // publish a half-written entry.
+    static WRITE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let sequence = WRITE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp_path = path.with_extension(format!("json.{}.{sequence}.tmp", std::process::id()));
     if fs::write(&temp_path, bytes).is_ok() {
         let _ = fs::rename(&temp_path, path);
     }
@@ -775,6 +810,54 @@ mod tests {
                 env::remove_var(self.key);
             }
         }
+    }
+
+    #[test]
+    fn ignores_cached_payload_written_by_different_binary() {
+        let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
+        let fixture = fs_fixture!({
+            "source/usage.jsonl": "{}\n",
+        });
+        let _env = EnvRestore::set_path("XDG_CACHE_HOME", &fixture.path("cache"));
+        let shared = SharedArgs {
+            mode: CostMode::Display,
+            ..SharedArgs::default()
+        };
+        let sources = || {
+            vec![recursive_extensions(
+                "test".to_string(),
+                fixture.path("source"),
+                &["jsonl"],
+            )]
+        };
+        let mut loads = 0;
+
+        let first: Value =
+            with_report_cache("daily", json!({"tool":"test"}), sources(), &shared, || {
+                loads += 1;
+                Ok(json!({"loads": loads}))
+            })
+            .unwrap();
+        assert_eq!(first, json!({"loads": 1}));
+
+        // Simulate a cache entry left behind by a previous build of ccusage.
+        let reports_dir = fixture.path("cache").join("ccusage").join("reports");
+        for entry in fs::read_dir(&reports_dir).unwrap() {
+            let path = entry.unwrap().path();
+            let mut envelope: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            envelope["binary"] = json!("stale-build-fingerprint");
+            fs::write(&path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        }
+
+        let second: Value =
+            with_report_cache("daily", json!({"tool":"test"}), sources(), &shared, || {
+                loads += 1;
+                Ok(json!({"loads": loads}))
+            })
+            .unwrap();
+
+        assert_eq!(second, json!({"loads": 2}));
+        assert_eq!(loads, 2);
     }
 
     #[test]
