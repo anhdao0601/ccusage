@@ -105,63 +105,27 @@ where
     Ok(payload)
 }
 
-pub(crate) fn all_report_sources(shared: &SharedArgs) -> Vec<ReportSource> {
-    let mut sources = Vec::new();
-    let include = |agent: &str| {
-        shared
-            .tool_filter
-            .as_ref()
-            .is_none_or(|filter| filter.iter().any(|tool| tool == agent))
-    };
-    if include("claude") {
-        sources.extend(claude_sources());
+pub(crate) fn agent_report_sources(agent: &str) -> Vec<ReportSource> {
+    match agent {
+        "claude" => claude_sources(),
+        "ncode" => ncode_sources(),
+        "codex" => codex_sources(),
+        "opencode" => opencode_sources(),
+        "amp" => amp_sources(),
+        "droid" => droid_sources(),
+        "codebuff" => codebuff_sources(),
+        "hermes" => hermes_sources(),
+        "pi" => pi_sources(None),
+        "goose" => goose_sources(),
+        "openclaw" => openclaw_sources(None),
+        "kilo" => kilo_sources(),
+        "copilot" => copilot_sources(),
+        "gemini" => gemini_sources(),
+        "kimi" => kimi_sources(),
+        "qwen" => qwen_sources(),
+        "zcode" => zcode_sources(),
+        _ => Vec::new(),
     }
-    if include("codex") {
-        sources.extend(codex_sources());
-    }
-    if include("opencode") {
-        sources.extend(opencode_sources());
-    }
-    if include("amp") {
-        sources.extend(amp_sources());
-    }
-    if include("droid") {
-        sources.extend(droid_sources());
-    }
-    if include("codebuff") {
-        sources.extend(codebuff_sources());
-    }
-    if include("hermes") {
-        sources.extend(hermes_sources());
-    }
-    if include("pi") {
-        sources.extend(pi_sources(None));
-    }
-    if include("goose") {
-        sources.extend(goose_sources());
-    }
-    if include("openclaw") {
-        sources.extend(openclaw_sources(None));
-    }
-    if include("kilo") {
-        sources.extend(kilo_sources());
-    }
-    if include("copilot") {
-        sources.extend(copilot_sources());
-    }
-    if include("gemini") {
-        sources.extend(gemini_sources());
-    }
-    if include("kimi") {
-        sources.extend(kimi_sources());
-    }
-    if include("qwen") {
-        sources.extend(qwen_sources());
-    }
-    if include("zcode") {
-        sources.extend(zcode_sources());
-    }
-    sources
 }
 
 pub(crate) fn opencode_report_sources() -> Vec<ReportSource> {
@@ -427,6 +391,30 @@ fn claude_sources() -> Vec<ReportSource> {
     dirs.into_iter()
         .enumerate()
         .map(|(index, path)| recursive_extensions(format!("claude:{index}"), path, &["jsonl"]))
+        .collect()
+}
+
+fn ncode_sources() -> Vec<ReportSource> {
+    let dirs = if let Ok(raw) = env::var("NCODE_CONFIG_DIR") {
+        env_paths(&raw)
+            .into_iter()
+            .map(|path| {
+                if path.file_name().is_some_and(|name| name == "projects") {
+                    path
+                } else {
+                    path.join("projects")
+                }
+            })
+            .collect()
+    } else {
+        let Some(home) = crate::home::home_dir() else {
+            return Vec::new();
+        };
+        vec![home.join(".ncode/projects")]
+    };
+    dirs.into_iter()
+        .enumerate()
+        .map(|(index, path)| recursive_extensions(format!("ncode:{index}"), path, &["jsonl"]))
         .collect()
 }
 
@@ -752,7 +740,7 @@ fn exact_file(id: String, path: PathBuf) -> ReportSource {
     }
 }
 
-fn recursive_extensions(
+pub(crate) fn recursive_extensions(
     id: String,
     path: PathBuf,
     extensions: &'static [&'static str],
