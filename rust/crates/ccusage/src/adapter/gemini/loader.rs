@@ -1,4 +1,7 @@
-use std::{path::PathBuf, thread};
+use std::{
+    path::{Path, PathBuf},
+    thread,
+};
 
 use crate::{
     chunk_file_indexes_by_size, cli::SharedArgs, parse_tz, LoadedEntry, PricingMap, Result,
@@ -29,7 +32,7 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
         .collect())
 }
 
-fn parse_log_file(file: &PathBuf) -> Result<Vec<GeminiUsageEvent>> {
+fn parse_log_file(file: &Path) -> Result<Vec<GeminiUsageEvent>> {
     if file.extension().and_then(|extension| extension.to_str()) == Some("jsonl") {
         parse_jsonl_file(file)
     } else {
@@ -47,7 +50,7 @@ fn parse_log_files(files: &[PathBuf], single_thread: bool) -> Vec<Result<Vec<Gem
             .min(files.len())
     };
     if worker_count <= 1 {
-        return files.iter().map(parse_log_file).collect();
+        return files.iter().map(|file| parse_log_file(file)).collect();
     }
 
     let chunks = chunk_file_indexes_by_size(files, worker_count);
