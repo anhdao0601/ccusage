@@ -126,9 +126,10 @@ fn session_index_path() -> Option<PathBuf> {
 mod tests {
     use super::*;
     use ccusage_test_support::fs_fixture;
-    use std::sync::Mutex;
 
-    static XDG_CACHE_HOME_LOCK: Mutex<()> = Mutex::new(());
+    // Shared with every other test that mutates XDG_CACHE_HOME; a module-local
+    // mutex would let these tests race the pricing/report cache tests.
+    use crate::pricing_cache::XDG_CACHE_HOME_LOCK;
 
     struct EnvRestore {
         key: &'static str,
