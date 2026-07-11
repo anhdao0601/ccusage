@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
+    thread,
 };
 
 use jiff::tz::TimeZone as JiffTimeZone;
@@ -9,6 +10,7 @@ use serde_json::Value;
 
 use super::{parser::message_value_to_entry, paths::paths};
 use crate::{
+    chunk_file_indexes_by_size,
     cli::{CostMode, SharedArgs},
     collect_files_with_extension, debug_log, parse_tz, LoadedEntry, PricingMap, Result,
 };
@@ -70,8 +72,14 @@ pub(crate) fn load_entries_from_directory(
     let messages_dir = opencode_dir.join("storage").join("message");
     let mut files = Vec::new();
     collect_files_with_extension(&messages_dir, "json", &mut files);
-    for file in files {
-        if let Some(entry) = read_message_file(&file, tz.as_ref(), shared.mode, pricing.as_ref())? {
+    for result in read_message_files(
+        &files,
+        tz.as_ref(),
+        shared.mode,
+        pricing.as_ref(),
+        shared.single_thread,
+    ) {
+        if let Some(entry) = result? {
             if let Some(id) = entry_id(&entry) {
                 if !seen.insert(id.to_string()) {
                     continue;
@@ -82,6 +90,60 @@ pub(crate) fn load_entries_from_directory(
     }
     entries.sort_by_key(|entry| entry.timestamp);
     Ok(entries)
+}
+
+fn read_message_files(
+    files: &[PathBuf],
+    tz: Option<&JiffTimeZone>,
+    mode: CostMode,
+    pricing: Option<&PricingMap>,
+    single_thread: bool,
+) -> Vec<Result<Option<LoadedEntry>>> {
+    let worker_count = if single_thread {
+        1
+    } else {
+        thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1)
+            .min(files.len())
+    };
+    if worker_count <= 1 {
+        return files
+            .iter()
+            .map(|file| read_message_file(file, tz, mode, pricing))
+            .collect();
+    }
+
+    let chunks = chunk_file_indexes_by_size(files, worker_count);
+    thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for chunk in chunks {
+            let tz = tz.cloned();
+            handles.push(scope.spawn(move || {
+                chunk
+                    .into_iter()
+                    .map(|index| {
+                        (
+                            index,
+                            read_message_file(&files[index], tz.as_ref(), mode, pricing),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }));
+        }
+        let mut results = Vec::with_capacity(files.len());
+        results.resize_with(files.len(), || None);
+        for (index, result) in handles
+            .into_iter()
+            .flat_map(|handle| handle.join().expect("opencode message worker panicked"))
+        {
+            results[index] = Some(result);
+        }
+        results
+            .into_iter()
+            .map(|result| result.expect("opencode message worker returned every file"))
+            .collect()
+    })
 }
 
 fn db_path(opencode_dir: &Path) -> Option<PathBuf> {
@@ -287,6 +349,58 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].session_id.as_ref(), "channel-session-a");
         assert_eq!(entries[0].data.message.usage.input_tokens, 80);
+    }
+
+    #[test]
+    fn parallel_load_matches_single_thread() {
+        let fixture = fs_fixture!({});
+        for index in 0..8_u64 {
+            let _ = fixture.write_file(
+                format!("storage/message/session-{index}/msg-{index}.json"),
+                format!(
+                    r#"{{"id":"msg-{index}","sessionID":"session-{index}","providerID":"anthropic","modelID":"claude-sonnet-4-20250514","time":{{"created":{}}},"tokens":{{"input":{},"output":{}}},"cost":0.01}}"#,
+                    1_767_312_000_000 + index * 1_000,
+                    100 + index,
+                    50 + index,
+                ),
+            );
+        }
+
+        let single_thread = SharedArgs {
+            mode: CostMode::Display,
+            timezone: Some("UTC".to_string()),
+            single_thread: true,
+            ..SharedArgs::default()
+        };
+        let parallel = SharedArgs {
+            single_thread: false,
+            ..single_thread.clone()
+        };
+        let projected = |entries: &[crate::LoadedEntry]| {
+            entries
+                .iter()
+                .map(|entry| {
+                    (
+                        entry.data.message.id.clone(),
+                        entry.session_id.to_string(),
+                        entry.timestamp,
+                        entry.data.message.usage.input_tokens,
+                        entry.data.message.usage.output_tokens,
+                        entry.cost.to_bits(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let single_thread_entries =
+            load_entries_from_directory(fixture.root(), &single_thread).unwrap();
+        let parallel_entries = load_entries_from_directory(fixture.root(), &parallel).unwrap();
+
+        assert_eq!(parallel_entries.len(), 8);
+        assert_eq!(
+            projected(&parallel_entries),
+            projected(&single_thread_entries)
+        );
     }
 
     #[test]
