@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, OnceLock, RwLock},
     time::{Duration, Instant},
 };
 
@@ -42,6 +42,9 @@ pub(crate) struct PricingMap {
     entries: FxHashMap<String, Pricing>,
     context_limits: FxHashMap<String, u64>,
     enable_models_dev_fallback: bool,
+    // Memoizes fuzzy `find_entry` misses of the exact-key map; those fall back
+    // to a full scan of `entries`, which is too slow to repeat per usage event.
+    resolved_models: RwLock<FxHashMap<String, Option<Pricing>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,6 +229,7 @@ impl PricingMap {
         json: &str,
         fast_multiplier_overrides: &FastMultiplierOverrides,
     ) -> usize {
+        self.invalidate_resolved_models();
         let Ok(raw) = serde_json::from_str::<FxHashMap<String, serde_json::Value>>(json) else {
             return 0;
         };
@@ -274,6 +278,7 @@ impl PricingMap {
     }
 
     fn load_models_dev_json_missing(&mut self, json: &str) -> Option<usize> {
+        self.invalidate_resolved_models();
         let Ok(raw) = serde_json::from_str::<FxHashMap<String, ModelsDevProvider>>(json) else {
             return None;
         };
@@ -335,18 +340,35 @@ impl PricingMap {
     }
 
     fn find_entry(&self, model: &str) -> Option<Pricing> {
-        self.entries.get(model).copied().or_else(|| {
-            let normalized_model = normalized_pricing_key(model);
-            self.entries
-                .iter()
-                .filter(|(candidate, _)| {
-                    pricing_key_matches(candidate, model, normalized_model.as_ref())
-                })
-                .max_by(|(left, _), (right, _)| {
-                    left.len().cmp(&right.len()).then_with(|| right.cmp(left))
-                })
-                .map(|(_, pricing)| *pricing)
-        })
+        if let Some(pricing) = self.entries.get(model) {
+            return Some(*pricing);
+        }
+        if let Ok(resolved) = self.resolved_models.read() {
+            if let Some(resolved) = resolved.get(model) {
+                return *resolved;
+            }
+        }
+        let normalized_model = normalized_pricing_key(model);
+        let resolved = self
+            .entries
+            .iter()
+            .filter(|(candidate, _)| {
+                pricing_key_matches(candidate, model, normalized_model.as_ref())
+            })
+            .max_by(|(left, _), (right, _)| {
+                left.len().cmp(&right.len()).then_with(|| right.cmp(left))
+            })
+            .map(|(_, pricing)| *pricing);
+        if let Ok(mut cache) = self.resolved_models.write() {
+            cache.insert(model.to_string(), resolved);
+        }
+        resolved
+    }
+
+    fn invalidate_resolved_models(&mut self) {
+        if let Ok(cache) = self.resolved_models.get_mut() {
+            cache.clear();
+        }
     }
 
     pub(crate) fn context_limit(&self, model: &str) -> Option<u64> {
@@ -385,6 +407,7 @@ impl PricingMap {
     }
 
     fn put_builtin_pricing(&mut self, fast_multiplier_overrides: &FastMultiplierOverrides) {
+        self.invalidate_resolved_models();
         self.entries.insert(
             "claude-opus-4-5".to_string(),
             Pricing {
@@ -1158,6 +1181,54 @@ mod tests {
         assert_eq!(
             pricing.context_limit("/data/models/hf/zai-org__GLM-5.2-FP8"),
             pricing.context_limit("glm-5.2")
+        );
+    }
+
+    #[test]
+    fn repeated_fuzzy_lookups_stay_consistent_and_see_later_loads() {
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{
+                "gemini/gemini-9.9-test": {
+                    "input_cost_per_token": 0.000001,
+                    "output_cost_per_token": 0.000010
+                }
+            }"#,
+        );
+
+        let first = pricing.find("google/gemini-9.9-test");
+        let second = pricing.find("google/gemini-9.9-test");
+        assert_eq!(first.map(|entry| entry.input), Some(0.000001));
+        assert_eq!(
+            first.map(|entry| entry.input.to_bits()),
+            second.map(|entry| entry.input.to_bits())
+        );
+        assert!(pricing.find("google/no-such-model-anywhere").is_none());
+
+        pricing.load_json(
+            r#"{
+                "google/gemini-9.9-test": {
+                    "input_cost_per_token": 0.000002,
+                    "output_cost_per_token": 0.000020
+                },
+                "google/no-such-model-anywhere": {
+                    "input_cost_per_token": 0.000003,
+                    "output_cost_per_token": 0.000030
+                }
+            }"#,
+        );
+
+        assert_eq!(
+            pricing
+                .find("google/gemini-9.9-test")
+                .map(|entry| entry.input),
+            Some(0.000002)
+        );
+        assert_eq!(
+            pricing
+                .find("google/no-such-model-anywhere")
+                .map(|entry| entry.input),
+            Some(0.000003)
         );
     }
 

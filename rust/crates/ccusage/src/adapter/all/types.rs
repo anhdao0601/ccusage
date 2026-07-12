@@ -29,9 +29,9 @@ pub(super) struct AllLoadResult {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct CachedAllLoadResult {
+pub(super) struct CachedAgentRows {
     rows: Vec<CachedAllRow>,
-    detected_agents: Vec<String>,
+    detected: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -52,28 +52,20 @@ struct CachedAllRow {
     model_breakdowns: Vec<ModelBreakdown>,
 }
 
-impl AllLoadResult {
-    pub(super) fn into_cache(self) -> CachedAllLoadResult {
-        CachedAllLoadResult {
+impl AgentRows {
+    pub(super) fn into_cache(self) -> CachedAgentRows {
+        CachedAgentRows {
             rows: self.rows.into_iter().map(CachedAllRow::from_row).collect(),
-            detected_agents: self
-                .detected_agents
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            detected: self.detected,
         }
     }
 }
 
-impl CachedAllLoadResult {
-    pub(super) fn into_result(self) -> AllLoadResult {
-        AllLoadResult {
+impl CachedAgentRows {
+    pub(super) fn into_agent_rows(self) -> AgentRows {
+        AgentRows {
             rows: self.rows.into_iter().map(CachedAllRow::into_row).collect(),
-            detected_agents: self
-                .detected_agents
-                .into_iter()
-                .filter_map(|agent| static_agent(&agent))
-                .collect(),
+            detected: self.detected,
         }
     }
 }

@@ -17,9 +17,40 @@ use super::{
     report::sort_rows,
     types::{
         merge_agent_breakdown, AgentLoadSpec, AgentRows, AllAccumulator, AllLoadResult, AllRow,
-        LoadedAgentRows,
+        CachedAgentRows, LoadedAgentRows,
     },
 };
+
+pub(super) fn load_cached_agent_rows(
+    agent: &'static str,
+    sources: Vec<crate::report_cache::ReportSource>,
+    load_kind: AgentReportKind,
+    shared: &SharedArgs,
+    load: impl FnOnce() -> Result<AgentRows>,
+) -> Result<AgentRows> {
+    let mut parameters = json!({
+        "agent": agent,
+        "kind": format!("{load_kind:?}"),
+        "since": shared.since,
+        "until": shared.until,
+        "mode": format!("{:?}", shared.mode),
+        "offline": shared.offline,
+        "timezone": shared.timezone,
+    });
+    if agent == "codex" {
+        // Codex costs depend on the speed tier resolved from config.toml,
+        // which is not covered by the codex source fingerprint.
+        parameters["codexSpeed"] = json!(format!(
+            "{:?}",
+            codex::resolve_codex_speed(CodexSpeed::Auto)
+        ));
+    }
+    let cached: CachedAgentRows =
+        crate::report_cache::with_report_cache("all-agent", parameters, sources, shared, || {
+            load().map(AgentRows::into_cache)
+        })?;
+    Ok(cached.into_agent_rows())
+}
 
 pub(super) fn load_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<AllLoadResult> {
     let mut progress = crate::progress::UsageLoadProgress::new(
@@ -263,6 +294,24 @@ pub(super) fn load_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<Al
         },
     ];
     filter_agent_specs(&mut specs, shared);
+    let loader_shared = &loader_shared;
+    let specs = specs
+        .into_iter()
+        .map(|spec| AgentLoadSpec {
+            index: spec.index,
+            agent: spec.agent,
+            progress_agent: spec.progress_agent,
+            load: Box::new(move || {
+                load_cached_agent_rows(
+                    spec.agent,
+                    crate::report_cache::agent_report_sources(spec.agent),
+                    load_kind,
+                    loader_shared,
+                    spec.load,
+                )
+            }),
+        })
+        .collect();
     let loaded = load_agent_rows_parallel(specs, &mut progress)?;
     let mut detected_agents = Vec::new();
     let mut rows = Vec::new();

@@ -1,6 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    sync::OnceLock,
     time::UNIX_EPOCH,
 };
 
@@ -37,7 +38,30 @@ enum SourceMatcher {
 struct ReportCacheEnvelope<T> {
     schema_version: u64,
     created_at: String,
+    // Cached payloads must not outlive the build that computed them: report
+    // shaping can change between builds while the cache key stays identical.
+    #[serde(default)]
+    binary: String,
     payload: T,
+}
+
+fn binary_fingerprint() -> String {
+    static FINGERPRINT: OnceLock<String> = OnceLock::new();
+    FINGERPRINT
+        .get_or_init(|| {
+            env::current_exe()
+                .and_then(fs::metadata)
+                .map(|metadata| {
+                    let mtime_ms = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                        .map_or(0, |duration| duration.as_millis());
+                    format!("{mtime_ms}:{}", metadata.len())
+                })
+                .unwrap_or_else(|_| "unknown".to_string())
+        })
+        .clone()
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +86,9 @@ pub(crate) fn with_report_cache<T>(
 where
     T: DeserializeOwned + Serialize,
 {
+    if report_cache_path("probe").is_none() {
+        return load();
+    }
     let source_fingerprint = compute_source_fingerprint(&sources);
     let read_pricing = read_pricing_fingerprint(shared);
     if let Some(pricing) = read_pricing.as_ref() {
@@ -78,63 +105,27 @@ where
     Ok(payload)
 }
 
-pub(crate) fn all_report_sources(shared: &SharedArgs) -> Vec<ReportSource> {
-    let mut sources = Vec::new();
-    let include = |agent: &str| {
-        shared
-            .tool_filter
-            .as_ref()
-            .is_none_or(|filter| filter.iter().any(|tool| tool == agent))
-    };
-    if include("claude") {
-        sources.extend(claude_sources());
+pub(crate) fn agent_report_sources(agent: &str) -> Vec<ReportSource> {
+    match agent {
+        "claude" => claude_sources(),
+        "ncode" => ncode_sources(),
+        "codex" => codex_sources(),
+        "opencode" => opencode_sources(),
+        "amp" => amp_sources(),
+        "droid" => droid_sources(),
+        "codebuff" => codebuff_sources(),
+        "hermes" => hermes_sources(),
+        "pi" => pi_sources(None),
+        "goose" => goose_sources(),
+        "openclaw" => openclaw_sources(None),
+        "kilo" => kilo_sources(),
+        "copilot" => copilot_sources(),
+        "gemini" => gemini_sources(),
+        "kimi" => kimi_sources(),
+        "qwen" => qwen_sources(),
+        "zcode" => zcode_sources(),
+        _ => Vec::new(),
     }
-    if include("codex") {
-        sources.extend(codex_sources());
-    }
-    if include("opencode") {
-        sources.extend(opencode_sources());
-    }
-    if include("amp") {
-        sources.extend(amp_sources());
-    }
-    if include("droid") {
-        sources.extend(droid_sources());
-    }
-    if include("codebuff") {
-        sources.extend(codebuff_sources());
-    }
-    if include("hermes") {
-        sources.extend(hermes_sources());
-    }
-    if include("pi") {
-        sources.extend(pi_sources(None));
-    }
-    if include("goose") {
-        sources.extend(goose_sources());
-    }
-    if include("openclaw") {
-        sources.extend(openclaw_sources(None));
-    }
-    if include("kilo") {
-        sources.extend(kilo_sources());
-    }
-    if include("copilot") {
-        sources.extend(copilot_sources());
-    }
-    if include("gemini") {
-        sources.extend(gemini_sources());
-    }
-    if include("kimi") {
-        sources.extend(kimi_sources());
-    }
-    if include("qwen") {
-        sources.extend(qwen_sources());
-    }
-    if include("zcode") {
-        sources.extend(zcode_sources());
-    }
-    sources
 }
 
 pub(crate) fn opencode_report_sources() -> Vec<ReportSource> {
@@ -176,7 +167,9 @@ fn cache_key(command: &str, parameters: &Value, source_fingerprint: &str, pricin
 fn read_report_cache<T: DeserializeOwned>(key: &str) -> Option<T> {
     let bytes = fs::read(report_cache_path(key)?).ok()?;
     let envelope = serde_json::from_slice::<ReportCacheEnvelope<T>>(&bytes).ok()?;
-    (envelope.schema_version == REPORT_CACHE_SCHEMA_VERSION).then_some(envelope.payload)
+    (envelope.schema_version == REPORT_CACHE_SCHEMA_VERSION
+        && envelope.binary == binary_fingerprint())
+    .then_some(envelope.payload)
 }
 
 fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
@@ -192,12 +185,18 @@ fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
     let envelope = ReportCacheEnvelope {
         schema_version: REPORT_CACHE_SCHEMA_VERSION,
         created_at: crate::format_rfc3339_millis(crate::utc_now()),
+        binary: binary_fingerprint(),
         payload,
     };
     let Ok(bytes) = serde_json::to_vec(&envelope) else {
         return;
     };
-    let temp_path = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    // Unique per write: concurrent same-key writers (per-agent loader threads,
+    // parallel tests) must never share a temp file, or the atomic rename can
+    // publish a half-written entry.
+    static WRITE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let sequence = WRITE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp_path = path.with_extension(format!("json.{}.{sequence}.tmp", std::process::id()));
     if fs::write(&temp_path, bytes).is_ok() {
         let _ = fs::rename(&temp_path, path);
     }
@@ -392,6 +391,30 @@ fn claude_sources() -> Vec<ReportSource> {
     dirs.into_iter()
         .enumerate()
         .map(|(index, path)| recursive_extensions(format!("claude:{index}"), path, &["jsonl"]))
+        .collect()
+}
+
+fn ncode_sources() -> Vec<ReportSource> {
+    let dirs = if let Ok(raw) = env::var("NCODE_CONFIG_DIR") {
+        env_paths(&raw)
+            .into_iter()
+            .map(|path| {
+                if path.file_name().is_some_and(|name| name == "projects") {
+                    path
+                } else {
+                    path.join("projects")
+                }
+            })
+            .collect()
+    } else {
+        let Some(home) = crate::home::home_dir() else {
+            return Vec::new();
+        };
+        vec![home.join(".ncode/projects")]
+    };
+    dirs.into_iter()
+        .enumerate()
+        .map(|(index, path)| recursive_extensions(format!("ncode:{index}"), path, &["jsonl"]))
         .collect()
 }
 
@@ -717,7 +740,7 @@ fn exact_file(id: String, path: PathBuf) -> ReportSource {
     }
 }
 
-fn recursive_extensions(
+pub(crate) fn recursive_extensions(
     id: String,
     path: PathBuf,
     extensions: &'static [&'static str],
@@ -775,6 +798,54 @@ mod tests {
                 env::remove_var(self.key);
             }
         }
+    }
+
+    #[test]
+    fn ignores_cached_payload_written_by_different_binary() {
+        let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
+        let fixture = fs_fixture!({
+            "source/usage.jsonl": "{}\n",
+        });
+        let _env = EnvRestore::set_path("XDG_CACHE_HOME", &fixture.path("cache"));
+        let shared = SharedArgs {
+            mode: CostMode::Display,
+            ..SharedArgs::default()
+        };
+        let sources = || {
+            vec![recursive_extensions(
+                "test".to_string(),
+                fixture.path("source"),
+                &["jsonl"],
+            )]
+        };
+        let mut loads = 0;
+
+        let first: Value =
+            with_report_cache("daily", json!({"tool":"test"}), sources(), &shared, || {
+                loads += 1;
+                Ok(json!({"loads": loads}))
+            })
+            .unwrap();
+        assert_eq!(first, json!({"loads": 1}));
+
+        // Simulate a cache entry left behind by a previous build of ccusage.
+        let reports_dir = fixture.path("cache").join("ccusage").join("reports");
+        for entry in fs::read_dir(&reports_dir).unwrap() {
+            let path = entry.unwrap().path();
+            let mut envelope: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            envelope["binary"] = json!("stale-build-fingerprint");
+            fs::write(&path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        }
+
+        let second: Value =
+            with_report_cache("daily", json!({"tool":"test"}), sources(), &shared, || {
+                loads += 1;
+                Ok(json!({"loads": loads}))
+            })
+            .unwrap();
+
+        assert_eq!(second, json!({"loads": 2}));
+        assert_eq!(loads, 2);
     }
 
     #[test]

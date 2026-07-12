@@ -37,6 +37,101 @@ fn test_agent_rows(agent: &'static str) -> AgentRows {
 }
 
 #[test]
+fn caches_agent_rows_per_agent_and_invalidates_on_source_change() {
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+    impl EnvRestore {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    let _cache_guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
+    let fixture = ccusage_test_support::fs_fixture!({
+        "gemini/chats/session-a.json": "{}",
+    });
+    let _cache_env = EnvRestore::set_path("XDG_CACHE_HOME", &fixture.path("cache"));
+    let sources = || {
+        vec![crate::report_cache::recursive_extensions(
+            "gemini:test".to_string(),
+            fixture.path("gemini"),
+            &["json", "jsonl"],
+        )]
+    };
+    let shared = crate::cli::SharedArgs {
+        offline: true,
+        json: true,
+        ..crate::cli::SharedArgs::default()
+    };
+    // A cost whose shortest JSON representation stresses float parsing: the
+    // cached row must come back bit-identical, not merely approximately equal.
+    let awkward_cost = 0.057_322_649_999_999_996_f64;
+    let cached_rows = || {
+        let mut rows = test_agent_rows("gemini");
+        rows.rows[0].total_cost = awkward_cost;
+        rows
+    };
+    let mut loads = 0;
+
+    let first = loader::load_cached_agent_rows(
+        "gemini",
+        sources(),
+        AgentReportKind::Daily,
+        &shared,
+        || {
+            loads += 1;
+            Ok(cached_rows())
+        },
+    )
+    .unwrap();
+    let second = loader::load_cached_agent_rows(
+        "gemini",
+        sources(),
+        AgentReportKind::Daily,
+        &shared,
+        || {
+            loads += 1;
+            Ok(cached_rows())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(loads, 1, "unchanged gemini sources must reuse the cache");
+    assert!(second.detected);
+    assert_eq!(second.rows.len(), 1);
+    assert_eq!(second.rows[0].period, first.rows[0].period);
+    assert_eq!(second.rows[0].agent, "gemini");
+    assert_eq!(second.rows[0].input_tokens, first.rows[0].input_tokens);
+    assert_eq!(second.rows[0].metadata_agents, Some(vec!["gemini"]));
+    assert_eq!(
+        second.rows[0].total_cost.to_bits(),
+        awkward_cost.to_bits(),
+        "cached costs must round-trip bit-identically"
+    );
+
+    let _ = fixture.write_file("gemini/chats/session-b.json", "{}");
+    loader::load_cached_agent_rows("gemini", sources(), AgentReportKind::Daily, &shared, || {
+        loads += 1;
+        Ok(test_agent_rows("gemini"))
+    })
+    .unwrap();
+
+    assert_eq!(loads, 2, "changed gemini sources must invalidate the cache");
+}
+
+#[test]
 fn loads_agent_rows_concurrently() {
     let active_loaders = Arc::new(AtomicUsize::new(0));
     let specs = [
