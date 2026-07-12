@@ -14,10 +14,11 @@ use crate::{
 };
 
 use super::{
+    model::{canonical_model_name, model_group_name, model_matches_selectors},
     report::sort_rows,
     types::{
-        merge_agent_breakdown, AgentLoadSpec, AgentRows, AllAccumulator, AllLoadResult, AllRow,
-        CachedAgentRows, LoadedAgentRows,
+        merge_agent_breakdown, merge_model_breakdowns, AgentLoadSpec, AgentRows, AllAccumulator,
+        AllLoadResult, AllRow, CachedAgentRows, LoadedAgentRows,
     },
 };
 
@@ -323,33 +324,40 @@ pub(super) fn load_rows(kind: AgentReportKind, shared: &SharedArgs) -> Result<Al
             loaded.agent_rows,
         );
     }
-    if shared.by_provider {
-        let mut rows = split_rows_by_model(aggregate_rows_by_provider(rows), shared);
-        sort_rows(&mut rows, &shared.order);
-        return Ok(AllLoadResult {
-            rows,
-            detected_agents,
-        });
-    }
+    let mut rows = group_rows(rows, kind, shared);
+    sort_rows(&mut rows, &shared.order);
+    Ok(AllLoadResult {
+        rows,
+        detected_agents,
+    })
+}
 
+pub(super) fn group_rows(
+    mut rows: Vec<AllRow>,
+    kind: AgentReportKind,
+    shared: &SharedArgs,
+) -> Vec<AllRow> {
+    if let Some(selectors) = shared.model_filter.as_deref() {
+        rows = filter_rows_by_model(rows, selectors);
+    }
+    if shared.by_provider {
+        if shared.by_model && shared.model_filter.is_none() {
+            for row in &mut rows {
+                canonicalize_row_models(row);
+            }
+        }
+        return split_rows_by_model(aggregate_rows_by_provider(rows), shared);
+    }
+    if shared.by_model {
+        return aggregate_rows_by_model(rows, shared.model_filter.as_deref());
+    }
     if kind == AgentReportKind::Session {
         for row in &mut rows {
             row.metadata_agents = None;
         }
-        let mut rows = split_rows_by_model(rows, shared);
-        sort_rows(&mut rows, &shared.order);
-        return Ok(AllLoadResult {
-            rows,
-            detected_agents,
-        });
+        return rows;
     }
-
-    let mut aggregated = split_rows_by_model(aggregate_rows(rows, kind), shared);
-    sort_rows(&mut aggregated, &shared.order);
-    Ok(AllLoadResult {
-        rows: aggregated,
-        detected_agents,
-    })
+    aggregate_rows(rows, kind)
 }
 
 pub(super) fn aggregate_rows_by_provider(rows: Vec<AllRow>) -> Vec<AllRow> {
@@ -378,6 +386,100 @@ pub(super) fn aggregate_rows_by_provider(rows: Vec<AllRow>) -> Vec<AllRow> {
         .collect()
 }
 
+pub(super) fn aggregate_rows_by_model(
+    rows: Vec<AllRow>,
+    selectors: Option<&[String]>,
+) -> Vec<AllRow> {
+    let mut groups = BTreeMap::<String, AllAccumulator>::new();
+    for row in rows {
+        for mut breakdown in row.model_breakdowns.iter().cloned() {
+            let model_name = model_group_name(&breakdown.model_name, selectors);
+            breakdown.model_name.clone_from(&model_name);
+            let mut model_row = model_breakdown_row(&row, breakdown, false);
+            model_row.period = "all".to_string();
+            model_row.models_used = vec![model_name.clone()];
+            groups.entry(model_name).or_default().add(model_row);
+        }
+    }
+
+    groups
+        .into_iter()
+        .map(|(model_name, group)| {
+            let mut row = group.into_row("all".to_string());
+            row.models_used = vec![model_name];
+            row
+        })
+        .collect()
+}
+
+pub(super) fn filter_rows_by_model(rows: Vec<AllRow>, selectors: &[String]) -> Vec<AllRow> {
+    rows.into_iter()
+        .filter_map(|mut row| {
+            canonicalize_row_models(&mut row);
+            row.model_breakdowns
+                .retain(|breakdown| model_matches_selectors(&breakdown.model_name, selectors));
+            if row.model_breakdowns.is_empty() {
+                return None;
+            }
+            apply_model_breakdowns_to_row(&mut row);
+            Some(row)
+        })
+        .collect()
+}
+
+fn canonicalize_row_models(row: &mut AllRow) {
+    let breakdowns = std::mem::take(&mut row.model_breakdowns)
+        .into_iter()
+        .map(|mut breakdown| {
+            breakdown.model_name = canonical_model_name(&breakdown.model_name);
+            breakdown
+        });
+    row.model_breakdowns = merge_model_breakdowns([], breakdowns);
+    row.models_used = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.model_name.clone())
+        .collect();
+}
+
+fn apply_model_breakdowns_to_row(row: &mut AllRow) {
+    row.models_used = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.model_name.clone())
+        .collect();
+    row.input_tokens = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.input_tokens)
+        .sum();
+    row.output_tokens = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.output_tokens)
+        .sum();
+    row.cache_creation_tokens = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.cache_creation_tokens)
+        .sum();
+    row.cache_read_tokens = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.cache_read_tokens)
+        .sum();
+    row.total_tokens = row
+        .model_breakdowns
+        .iter()
+        .map(model_breakdown_total_tokens)
+        .sum();
+    row.total_cost = row
+        .model_breakdowns
+        .iter()
+        .map(|breakdown| breakdown.cost)
+        .sum();
+}
+
 fn filter_agent_specs(specs: &mut Vec<AgentLoadSpec<'_>>, shared: &SharedArgs) {
     let Some(filter) = shared.tool_filter.as_ref() else {
         return;
@@ -393,12 +495,6 @@ pub(super) fn split_rows_by_model(rows: Vec<AllRow>, shared: &SharedArgs) -> Vec
 }
 
 fn split_row_by_model(row: AllRow) -> Vec<AllRow> {
-    if let Some(agent_breakdowns) = row.agent_breakdowns {
-        return agent_breakdowns
-            .into_iter()
-            .flat_map(split_row_by_model)
-            .collect();
-    }
     if row.model_breakdowns.is_empty() {
         return vec![row];
     }

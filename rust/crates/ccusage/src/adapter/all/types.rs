@@ -243,7 +243,7 @@ pub(super) fn merge_agent_breakdown(target: &mut AllRow, source: AllRow) {
         merge_model_breakdowns(target.model_breakdowns.drain(..), source.model_breakdowns);
 }
 
-fn merge_model_breakdowns(
+pub(super) fn merge_model_breakdowns(
     existing: impl IntoIterator<Item = ModelBreakdown>,
     additional: impl IntoIterator<Item = ModelBreakdown>,
 ) -> Vec<ModelBreakdown> {

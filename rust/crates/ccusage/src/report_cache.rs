@@ -15,7 +15,7 @@ use crate::{
 
 const CACHE_DIRECTORY_NAME: &str = "ccusage";
 const REPORT_CACHE_SUBDIR: &str = "reports";
-const REPORT_CACHE_SCHEMA_VERSION: u64 = 2;
+const REPORT_CACHE_SCHEMA_VERSION: u64 = 3;
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x100000001b3;
 
@@ -147,6 +147,7 @@ pub(crate) fn report_parameters(
         "offline": shared.offline,
         "timezone": shared.timezone,
         "toolFilter": shared.tool_filter,
+        "modelFilter": shared.model_filter,
         "byModel": shared.by_model,
         "byProvider": shared.by_provider,
         "singleThread": shared.single_thread,
@@ -936,5 +937,22 @@ mod tests {
             Some(crate::pricing::embedded_pricing_fingerprint())
         );
         assert_ne!(pricing, Some("pricing:offline".to_string()));
+    }
+
+    #[test]
+    fn report_parameters_include_model_filter() {
+        let shared = SharedArgs {
+            model_filter: Some(vec!["opus".to_string()]),
+            ..SharedArgs::default()
+        };
+
+        let parameters = report_parameters("all", "monthly", &shared);
+
+        assert_eq!(parameters["modelFilter"], json!(["opus"]));
+    }
+
+    #[test]
+    fn canonical_model_reports_use_current_cache_schema() {
+        assert_eq!(REPORT_CACHE_SCHEMA_VERSION, 3);
     }
 }

@@ -52,6 +52,7 @@ pub struct SharedArgs {
     pub compact: bool,
     pub single_thread: bool,
     pub tool_filter: Option<Vec<String>>,
+    pub model_filter: Option<Vec<String>>,
     pub by_model: bool,
     pub by_provider: bool,
     pub update_pricing: bool,

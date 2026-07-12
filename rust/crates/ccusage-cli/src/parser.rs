@@ -754,6 +754,7 @@ fn parse_shared_arg(parser: &mut ArgParser, shared: &mut SharedArgs) -> Result<(
         "--compact" => shared.compact = true,
         "--single-thread" => shared.single_thread = true,
         "--tool" => shared.tool_filter = parse_tool_filter(&parser.value_for("--tool")?)?,
+        "--model" => shared.model_filter = Some(parse_model_filter(&parser.value_for("--model")?)?),
         "--by-model" => shared.by_model = true,
         "--by-provider" => shared.by_provider = true,
         "--update-pricing" => shared.update_pricing = true,
@@ -795,6 +796,24 @@ pub fn parse_tool_filter(value: &str) -> Result<Option<Vec<String>>, String> {
         }
     }
     Ok(Some(selected))
+}
+
+pub fn parse_model_filter(value: &str) -> Result<Vec<String>, String> {
+    let mut selectors = Vec::new();
+    for selector in value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let selector = selector.to_ascii_lowercase();
+        if !selectors.contains(&selector) {
+            selectors.push(selector);
+        }
+    }
+    if selectors.is_empty() {
+        return Err("`--model` requires at least one model or family".to_string());
+    }
+    Ok(selectors)
 }
 
 fn is_command(arg: &str) -> bool {
@@ -941,6 +960,7 @@ fn option_takes_value(arg: &str) -> bool {
             | "--jq"
             | "--config"
             | "--tool"
+            | "--model"
             | "-p"
             | "--project"
             | "--project-aliases"
@@ -1058,6 +1078,7 @@ fn is_shared_flag(arg: &str) -> bool {
             | "--compact"
             | "--single-thread"
             | "--tool"
+            | "--model"
             | "--by-model"
             | "--by-provider"
             | "--update-pricing"
@@ -1152,6 +1173,24 @@ mod tests {
         assert_eq!(
             control_arg(&args(&["--help", "--version"])),
             Some(ControlArg::Version)
+        );
+    }
+
+    #[test]
+    fn parses_cross_source_model_selectors() {
+        let cli = Cli::parse_from(
+            ["ccusage", "monthly", "--model", "opus,claude-sonnet-4-6"]
+                .into_iter()
+                .map(OsString::from),
+        )
+        .unwrap();
+        let Some(Command::All(args)) = cli.command else {
+            panic!("expected all-agent command");
+        };
+
+        assert_eq!(
+            args.shared.model_filter,
+            Some(vec!["opus".to_string(), "claude-sonnet-4-6".to_string()])
         );
     }
 }

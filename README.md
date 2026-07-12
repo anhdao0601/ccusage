@@ -23,9 +23,16 @@ Useful variants:
 ccusage daily --tool all --offline
 ccusage daily --tool all --json
 ccusage daily --tool all --by-provider
+ccusage monthly --tool all --by-model
+ccusage monthly --tool all --by-model --model opus
 ccusage session --tool all
 ccusage monthly --tool all
 ```
+
+`--by-model` canonicalizes model aliases across providers, so pi usage such as
+`[pi] anthropic/claude-opus-4.6` is pooled with Claude Code usage reported as
+`claude-opus-4-6`. Use `--model opus` to filter every provider to the Opus
+family, or pass an exact model such as `--model opus-4-6`.
 
 Providers currently covered in this fork include Claude, NCode, ZCode, Codex, OpenCode, pi, and Amp.
 

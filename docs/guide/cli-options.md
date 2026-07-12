@@ -38,6 +38,34 @@ ccusage daily -b
 ccusage daily --json --breakdown
 ```
 
+### Cross-Source Model Aggregation
+
+Collapse the selected range by provider, canonical model, or both:
+
+```bash
+# One total per coding-agent tool
+ccusage monthly --by-provider
+
+# One total per canonical model across every tool
+ccusage monthly --by-model
+
+# One total per tool and canonical model
+ccusage monthly --by-provider --by-model
+```
+
+Filter all sources by a model family or exact model. Comma-separated selectors
+are combined with OR semantics. With `--by-model`, a family selector also pools
+all matching versions under that family:
+
+```bash
+ccusage monthly --model opus
+ccusage monthly --model opus-4-6
+ccusage monthly --model opus,sonnet --by-model
+```
+
+Model aliases are canonicalized before matching, so source-specific names such
+as `[pi] anthropic/claude-opus-4.6` match `opus` and `opus-4-6`.
+
 ### Cost Calculation Mode
 
 Choose how costs are calculated:

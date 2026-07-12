@@ -697,8 +697,188 @@ fn aggregates_model_breakdowns_across_agents() {
 }
 
 #[test]
-fn splits_aggregated_rows_by_agent_and_model_when_requested() {
-    let rows = aggregate_rows(
+fn aggregates_equivalent_models_across_agents() {
+    let rows = group_rows(
+        vec![
+            AllRow {
+                period: "2026-01-02".to_string(),
+                agent: "claude",
+                models_used: vec!["claude-opus-4-6".to_string()],
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_creation_tokens: 1,
+                cache_read_tokens: 2,
+                total_tokens: 18,
+                total_cost: 0.1,
+                metadata: None,
+                metadata_agents: Some(vec!["claude"]),
+                agent_breakdowns: None,
+                model_breakdowns: vec![ModelBreakdown {
+                    model_name: "claude-opus-4-6".to_string(),
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_creation_tokens: 1,
+                    cache_read_tokens: 2,
+                    cost: 0.1,
+                    ..ModelBreakdown::default()
+                }],
+            },
+            AllRow {
+                period: "2026-01-03".to_string(),
+                agent: "pi",
+                models_used: vec!["[pi] anthropic/claude-opus-4.6".to_string()],
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_creation_tokens: 2,
+                cache_read_tokens: 4,
+                total_tokens: 36,
+                total_cost: 0.2,
+                metadata: None,
+                metadata_agents: Some(vec!["pi"]),
+                agent_breakdowns: None,
+                model_breakdowns: vec![ModelBreakdown {
+                    model_name: "[pi] anthropic/claude-opus-4.6".to_string(),
+                    input_tokens: 20,
+                    output_tokens: 10,
+                    cache_creation_tokens: 2,
+                    cache_read_tokens: 4,
+                    cost: 0.2,
+                    ..ModelBreakdown::default()
+                }],
+            },
+        ],
+        AgentReportKind::Monthly,
+        &crate::cli::SharedArgs {
+            by_model: true,
+            ..crate::cli::SharedArgs::default()
+        },
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].period, "all");
+    assert_eq!(rows[0].agent, "all");
+    assert_eq!(rows[0].models_used, vec!["claude-opus-4-6"]);
+    assert_eq!(rows[0].metadata_agents, Some(vec!["claude", "pi"]));
+    assert_eq!(rows[0].input_tokens, 30);
+    assert_eq!(rows[0].total_tokens, 54);
+    assert!((rows[0].total_cost - 0.3).abs() < f64::EPSILON);
+}
+
+#[test]
+fn filters_models_by_family_across_source_aliases() {
+    let rows = filter_rows_by_model(
+        vec![AllRow {
+            period: "2026-01-02".to_string(),
+            agent: "pi",
+            models_used: vec![
+                "[pi] anthropic/claude-opus-4.6".to_string(),
+                "[pi] anthropic/claude-sonnet-4.6".to_string(),
+            ],
+            input_tokens: 30,
+            output_tokens: 15,
+            cache_creation_tokens: 3,
+            cache_read_tokens: 6,
+            total_tokens: 54,
+            total_cost: 0.3,
+            metadata: None,
+            metadata_agents: Some(vec!["pi"]),
+            agent_breakdowns: None,
+            model_breakdowns: vec![
+                ModelBreakdown {
+                    model_name: "[pi] anthropic/claude-opus-4.6".to_string(),
+                    input_tokens: 20,
+                    output_tokens: 10,
+                    cache_creation_tokens: 2,
+                    cache_read_tokens: 4,
+                    cost: 0.2,
+                    ..ModelBreakdown::default()
+                },
+                ModelBreakdown {
+                    model_name: "[pi] anthropic/claude-sonnet-4.6".to_string(),
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_creation_tokens: 1,
+                    cache_read_tokens: 2,
+                    cost: 0.1,
+                    ..ModelBreakdown::default()
+                },
+            ],
+        }],
+        &["opus".to_string()],
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].models_used, vec!["claude-opus-4-6"]);
+    assert_eq!(rows[0].input_tokens, 20);
+    assert_eq!(rows[0].output_tokens, 10);
+    assert_eq!(rows[0].cache_creation_tokens, 2);
+    assert_eq!(rows[0].cache_read_tokens, 4);
+    assert_eq!(rows[0].total_tokens, 36);
+    assert!((rows[0].total_cost - 0.2).abs() < f64::EPSILON);
+}
+
+#[test]
+fn aggregates_selected_model_family_across_versions() {
+    let rows = group_rows(
+        vec![
+            AllRow {
+                period: "2026-01-02".to_string(),
+                agent: "claude",
+                models_used: vec!["claude-opus-4-6".to_string()],
+                input_tokens: 10,
+                output_tokens: 0,
+                cache_creation_tokens: 0,
+                cache_read_tokens: 0,
+                total_tokens: 10,
+                total_cost: 0.1,
+                metadata: None,
+                metadata_agents: Some(vec!["claude"]),
+                agent_breakdowns: None,
+                model_breakdowns: vec![ModelBreakdown {
+                    model_name: "claude-opus-4-6".to_string(),
+                    input_tokens: 10,
+                    cost: 0.1,
+                    ..ModelBreakdown::default()
+                }],
+            },
+            AllRow {
+                period: "2026-01-03".to_string(),
+                agent: "pi",
+                models_used: vec!["[pi] anthropic/claude-opus-4.7".to_string()],
+                input_tokens: 20,
+                output_tokens: 0,
+                cache_creation_tokens: 0,
+                cache_read_tokens: 0,
+                total_tokens: 20,
+                total_cost: 0.2,
+                metadata: None,
+                metadata_agents: Some(vec!["pi"]),
+                agent_breakdowns: None,
+                model_breakdowns: vec![ModelBreakdown {
+                    model_name: "[pi] anthropic/claude-opus-4.7".to_string(),
+                    input_tokens: 20,
+                    cost: 0.2,
+                    ..ModelBreakdown::default()
+                }],
+            },
+        ],
+        AgentReportKind::Monthly,
+        &crate::cli::SharedArgs {
+            by_model: true,
+            model_filter: Some(vec!["opus".to_string()]),
+            ..crate::cli::SharedArgs::default()
+        },
+    );
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].models_used, vec!["opus"]);
+    assert_eq!(rows[0].input_tokens, 30);
+    assert_eq!(rows[0].metadata_agents, Some(vec!["claude", "pi"]));
+}
+
+#[test]
+fn groups_by_provider_and_canonical_model_when_both_are_requested() {
+    let rows = group_rows(
         vec![
             AllRow {
                 period: "2026-01-02".to_string(),
@@ -748,12 +928,9 @@ fn splits_aggregated_rows_by_agent_and_model_when_requested() {
             },
         ],
         AgentReportKind::Monthly,
-    );
-
-    let rows = super::loader::split_rows_by_model(
-        rows,
         &crate::cli::SharedArgs {
             by_model: true,
+            by_provider: true,
             ..crate::cli::SharedArgs::default()
         },
     );
@@ -764,8 +941,8 @@ fn splits_aggregated_rows_by_agent_and_model_when_requested() {
             .map(|row| row.models_used.clone())
             .collect::<Vec<_>>(),
         vec![
-            vec!["[pi] anthropic/claude-opus-4-7".to_string()],
-            vec!["[pi] gpt-5.4".to_string()],
+            vec!["claude-opus-4-7".to_string()],
+            vec!["gpt-5.4".to_string()],
         ]
     );
     assert_eq!(
@@ -861,7 +1038,7 @@ fn all_table_rows_match_main_agent_breakdown_display() {
 
     assert_eq!(
         all_table_row(&row, true, false),
-        vec!["2026-01-02", "All", "", "100", "20", "$0.01"]
+        vec!["2026-01-02", "All", "- gpt-5", "100", "20", "$0.01"]
     );
     assert_eq!(
         all_table_row(

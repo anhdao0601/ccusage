@@ -361,7 +361,9 @@ pub(crate) struct SharedOptions {
     pub(crate) single_thread: Option<bool>,
     /// Agent sources to include (`all`, or a comma-separated list).
     pub(crate) tool: Option<String>,
-    /// Split multi-tool report rows by model.
+    /// Canonical models or families to include (comma-separated).
+    pub(crate) model: Option<String>,
+    /// Collapse multi-tool report rows by canonical model across providers.
     pub(crate) by_model: Option<bool>,
     /// Collapse multi-tool report rows by provider.
     pub(crate) by_provider: Option<bool>,
@@ -575,6 +577,7 @@ impl SharedOptions {
             compact: bool_option(map, "compact"),
             single_thread: bool_option(map, "singleThread"),
             tool: string_option(map, "tool"),
+            model: string_option(map, "model"),
             by_model: bool_option(map, "byModel"),
             by_provider: bool_option(map, "byProvider"),
         }
@@ -976,6 +979,7 @@ mod tests {
             "jq",
             "json",
             "mode",
+            "model",
             "noColor",
             "noOffline",
             "offline",

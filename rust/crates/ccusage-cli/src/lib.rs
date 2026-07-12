@@ -9,7 +9,7 @@ pub use types::{
     SessionArgs, SharedArgs, SortOrder, StatuslineArgs, VisualBurnRate, WeekDay, WeeklyArgs,
 };
 
-pub use parser::parse_tool_filter;
+pub use parser::{parse_model_filter, parse_tool_filter};
 
 #[cfg(test)]
 mod help_codegen;

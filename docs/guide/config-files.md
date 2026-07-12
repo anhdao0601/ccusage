@@ -144,6 +144,8 @@ The `defaults` section sets shared default values for unified reports and legacy
 		"debugSamples": 5,
 		"order": "asc",
 		"breakdown": false,
+		"byModel": true,
+		"model": "opus,sonnet",
 		"offline": false,
 		"timezone": "UTC"
 	}

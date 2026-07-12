@@ -65,6 +65,8 @@ OPTIONS:
   -z, --timezone <timezone>            Timezone for date grouping (IANA)
   --all                                Accepted for compatibility; all detected supported agents are included by default (default: false)
   --by-provider                        Collapse all-agent report rows by provider instead of by date, week, month, or session (default: false)
+  --by-model                           Collapse all-agent report rows by canonical model across providers (default: false)
+  --model <model>                      Filter to comma-separated canonical models or families across providers
   -O, --offline                        Use cached pricing data where supported (default: false)
   --no-offline                         Negatable of -O, --offline
   --update-pricing                     Force-refresh LiteLLM pricing and update the local pricing cache for this run (default: false)

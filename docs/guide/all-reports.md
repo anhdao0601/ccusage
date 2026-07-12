@@ -35,6 +35,32 @@ ccusage detects local usage files from Claude Code, NCode, ZCode, Codex, OpenCod
 
 Unified tables include an **Agent** column so you can compare sources in one view. Focused views remove that comparison layer and show the selected source in more detail where applicable.
 
+## Aggregate by Provider or Model
+
+Use `--by-provider` to collapse the selected date range into one row per tool.
+Use `--by-model` to collapse it into one row per canonical model across tools:
+
+```bash
+ccusage monthly --by-provider
+ccusage monthly --by-model
+ccusage monthly --by-provider --by-model
+```
+
+Combining the flags produces one row per provider and model. Model aggregation
+normalizes source labels, provider prefixes, Anthropic date suffixes, and
+Anthropic version separators. For example, `[pi] anthropic/claude-opus-4.6` and
+`claude-opus-4-6` share the canonical `claude-opus-4-6` pool.
+
+Use `--model` with a model family or exact canonical model to filter every
+source consistently. When a family selector is combined with `--by-model`, all
+matching versions share one family pool. Multiple selectors are comma-separated:
+
+```bash
+ccusage monthly --by-model --model opus
+ccusage monthly --by-model --model opus-4-6
+ccusage monthly --model opus,sonnet
+```
+
 ## Supported Sources
 
 | Source       | Namespace  | Example focused view      |

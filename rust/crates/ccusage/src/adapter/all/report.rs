@@ -335,7 +335,7 @@ pub(super) fn all_table_row(row: &AllRow, compact: bool, breakdown: bool) -> Vec
     } else {
         agent_label(row.agent).to_string()
     };
-    let models = if row.agent_breakdowns.is_some() {
+    let models = if row.agent_breakdowns.is_some() && row.models_used.len() != 1 {
         String::new()
     } else {
         format_models_multiline(&row.models_used)

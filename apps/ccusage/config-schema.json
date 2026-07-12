@@ -36,8 +36,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -87,6 +87,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -159,8 +164,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -210,6 +215,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -282,8 +292,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -333,6 +343,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -408,8 +423,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -459,6 +474,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -545,8 +565,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -590,6 +610,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -672,8 +697,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -722,6 +747,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -799,8 +829,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -850,6 +880,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -922,8 +957,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -973,6 +1008,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -1122,8 +1162,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -1167,6 +1207,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -1255,8 +1300,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -1330,6 +1375,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noCache": {
@@ -1466,8 +1516,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -1517,6 +1567,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -1589,8 +1644,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -1640,6 +1695,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -1712,8 +1772,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -1763,6 +1823,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -1838,8 +1903,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -1889,6 +1954,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -1970,8 +2040,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -2015,6 +2085,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -2087,8 +2162,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -2132,6 +2207,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -2204,8 +2284,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -2249,6 +2329,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -2324,8 +2409,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -2369,6 +2454,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -2454,8 +2544,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -2499,6 +2589,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -2581,8 +2676,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -2631,6 +2726,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -2708,8 +2808,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -2759,6 +2859,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -2831,8 +2936,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -2882,6 +2987,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -3031,8 +3141,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -3076,6 +3186,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -3169,8 +3284,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -3220,6 +3335,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -3292,8 +3412,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -3343,6 +3463,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -3415,8 +3540,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -3466,6 +3591,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -3541,8 +3671,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -3592,6 +3722,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -3669,8 +3804,8 @@
 							"type": "boolean"
 						},
 						"byModel": {
-							"description": "Split multi-tool report rows by model.",
-							"markdownDescription": "Split multi-tool report rows by model.",
+							"description": "Collapse multi-tool report rows by canonical model across providers.",
+							"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 							"type": "boolean"
 						},
 						"byProvider": {
@@ -3720,6 +3855,11 @@
 							"description": "Cost calculation mode.",
 							"enum": ["auto", "calculate", "display"],
 							"markdownDescription": "Cost calculation mode.",
+							"type": "string"
+						},
+						"model": {
+							"description": "Canonical models or families to include (comma-separated).",
+							"markdownDescription": "Canonical models or families to include (comma-separated).",
 							"type": "string"
 						},
 						"noColor": {
@@ -3800,8 +3940,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -3851,6 +3991,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -3923,8 +4068,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -3974,6 +4119,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4046,8 +4196,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4097,6 +4247,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4172,8 +4327,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -4223,6 +4378,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -4306,8 +4466,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4357,6 +4517,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4429,8 +4594,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4480,6 +4645,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4552,8 +4722,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4603,6 +4773,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4678,8 +4853,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -4729,6 +4904,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -4812,8 +4992,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4863,6 +5043,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -4935,8 +5120,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -4986,6 +5171,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5058,8 +5248,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5109,6 +5299,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5184,8 +5379,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -5235,6 +5430,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -5318,8 +5518,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5369,6 +5569,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5441,8 +5646,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5492,6 +5697,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5564,8 +5774,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5615,6 +5825,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5690,8 +5905,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -5741,6 +5956,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -5824,8 +6044,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5875,6 +6095,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -5947,8 +6172,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -5998,6 +6223,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6070,8 +6300,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -6121,6 +6351,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6196,8 +6431,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -6247,6 +6482,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -6330,8 +6570,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -6381,6 +6621,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6453,8 +6698,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -6504,6 +6749,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6576,8 +6826,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -6627,6 +6877,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6702,8 +6957,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -6753,6 +7008,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -6836,8 +7096,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -6887,6 +7147,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -6959,8 +7224,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7010,6 +7275,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7082,8 +7352,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7133,6 +7403,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7208,8 +7483,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -7259,6 +7534,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -7340,8 +7620,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7385,6 +7665,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7455,8 +7740,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7500,6 +7785,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7570,8 +7860,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7615,6 +7905,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7688,8 +7983,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -7733,6 +8028,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -7816,8 +8116,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7867,6 +8167,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -7939,8 +8244,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -7990,6 +8295,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8062,8 +8372,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8113,6 +8423,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8185,8 +8500,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8236,6 +8551,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8311,8 +8631,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -8362,6 +8682,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -8443,8 +8768,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8488,6 +8813,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8558,8 +8888,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8603,6 +8933,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8673,8 +9008,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8718,6 +9053,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -8791,8 +9131,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -8836,6 +9176,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -8919,8 +9264,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -8970,6 +9315,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9042,8 +9392,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -9093,6 +9443,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9165,8 +9520,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -9216,6 +9571,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9291,8 +9651,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -9342,6 +9702,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {
@@ -9425,8 +9790,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -9476,6 +9841,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9548,8 +9918,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -9599,6 +9969,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9671,8 +10046,8 @@
 											"type": "boolean"
 										},
 										"byModel": {
-											"description": "Split multi-tool report rows by model.",
-											"markdownDescription": "Split multi-tool report rows by model.",
+											"description": "Collapse multi-tool report rows by canonical model across providers.",
+											"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 											"type": "boolean"
 										},
 										"byProvider": {
@@ -9722,6 +10097,11 @@
 											"description": "Cost calculation mode.",
 											"enum": ["auto", "calculate", "display"],
 											"markdownDescription": "Cost calculation mode.",
+											"type": "string"
+										},
+										"model": {
+											"description": "Canonical models or families to include (comma-separated).",
+											"markdownDescription": "Canonical models or families to include (comma-separated).",
 											"type": "string"
 										},
 										"noColor": {
@@ -9797,8 +10177,8 @@
 									"type": "boolean"
 								},
 								"byModel": {
-									"description": "Split multi-tool report rows by model.",
-									"markdownDescription": "Split multi-tool report rows by model.",
+									"description": "Collapse multi-tool report rows by canonical model across providers.",
+									"markdownDescription": "Collapse multi-tool report rows by canonical model across providers.",
 									"type": "boolean"
 								},
 								"byProvider": {
@@ -9848,6 +10228,11 @@
 									"description": "Cost calculation mode.",
 									"enum": ["auto", "calculate", "display"],
 									"markdownDescription": "Cost calculation mode.",
+									"type": "string"
+								},
+								"model": {
+									"description": "Canonical models or families to include (comma-separated).",
+									"markdownDescription": "Canonical models or families to include (comma-separated).",
 									"type": "string"
 								},
 								"noColor": {

@@ -89,6 +89,15 @@
 			"default": "false"
 		},
 		{
+			"flags": "--by-model",
+			"description": "Collapse all-agent report rows by canonical model across providers",
+			"default": "false"
+		},
+		{
+			"flags": "--model <model>",
+			"description": "Filter to comma-separated canonical models or families across providers"
+		},
+		{
 			"flags": "-O, --offline",
 			"description": "Use cached pricing data where supported",
 			"default": "false"

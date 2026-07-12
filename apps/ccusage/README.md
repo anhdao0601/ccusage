@@ -109,6 +109,8 @@ bunx ccusage pi daily --pi-path /path/to/sessions,/archive/pi/sessions
 # Explicit unified report
 bunx ccusage daily --all
 bunx ccusage daily --all --by-provider  # Collapse usage to one row per provider
+bunx ccusage monthly --all --by-model  # Pool equivalent models across providers
+bunx ccusage monthly --all --by-model --model opus  # Filter to one model family
 
 # Filters and options
 bunx ccusage daily --since 2026-04-25 --until 2026-05-16
@@ -134,6 +136,7 @@ bunx ccusage monthly --compact  # Compact monthly report
 - ⏰ **5-Hour Blocks Report**: Track usage within Claude's billing windows with active block monitoring
 - 🚀 **Statusline Integration**: Compact usage display for Claude Code status bar hooks (Beta)
 - 🤖 **Model Tracking**: See which models are used across supported sources
+- 🧩 **Cross-Provider Model Pools**: Canonicalize aliases and aggregate equivalent models with `--by-model`
 - 📊 **Model Breakdown**: View per-model cost breakdown with `--breakdown` flag
 - 📅 **Date Filtering**: Filter reports by date range using `--since` and `--until`
 - 📁 **Custom Paths**: Support for custom local data directory locations

@@ -210,6 +210,8 @@ fn option_takes_value(arg: &str) -> bool {
             | "-q"
             | "--jq"
             | "--config"
+            | "--tool"
+            | "--model"
             | "-t"
             | "--token-limit"
             | "-n"
@@ -468,6 +470,12 @@ fn apply_shared_options(shared: &mut SharedArgs, options: SharedOptions) {
             Err(error) => eprintln!("WARN  Invalid config \"tool\": {error}"),
         }
     }
+    if let Some(model) = options.model {
+        match crate::cli::parse_model_filter(&model) {
+            Ok(filter) => shared.model_filter = Some(filter),
+            Err(error) => eprintln!("WARN  Invalid config \"model\": {error}"),
+        }
+    }
 }
 
 impl From<ConfigCostMode> for CostMode {
@@ -568,7 +576,8 @@ mod tests {
                     "timezone": "Asia/Tokyo",
                     "jq": ".totals",
                     "compact": true,
-                    "singleThread": true
+                    "singleThread": true,
+                    "model": "opus,sonnet"
                 }
             }),
             "daily",
@@ -595,6 +604,10 @@ mod tests {
         assert_eq!(shared.jq.as_deref(), Some(".totals"));
         assert!(shared.compact);
         assert!(shared.single_thread);
+        assert_eq!(
+            shared.model_filter,
+            Some(vec!["opus".to_string(), "sonnet".to_string()])
+        );
     }
 
     #[test]
