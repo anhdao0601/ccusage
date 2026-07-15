@@ -909,13 +909,17 @@ pub(super) fn codex_group_row(
                 usage.cached_input_tokens,
                 usage.cache_write_tokens,
             );
+            let partitioned_tokens = input
+                .saturating_add(usage.output_tokens)
+                .saturating_add(usage.cache_write_tokens)
+                .saturating_add(usage.cached_input_tokens);
             ModelBreakdown {
                 model_name: model.clone(),
                 input_tokens: input,
                 output_tokens: usage.output_tokens,
                 cache_creation_tokens: usage.cache_write_tokens,
                 cache_read_tokens: usage.cached_input_tokens,
-                extra_total_tokens: 0,
+                extra_total_tokens: usage.total_tokens.saturating_sub(partitioned_tokens),
                 cost: codex::calculate_codex_model_cost(model, usage, pricing, speed),
                 missing_pricing: codex::codex_model_missing_pricing(model, usage, pricing),
             }
@@ -1013,5 +1017,57 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date.as_deref(), Some("2026-01-02"));
         assert_eq!(rows[0].input_tokens, 20);
+    }
+
+    #[test]
+    fn preserves_codex_reported_total_when_filtering_models() {
+        fn filtered_row(usage: crate::CodexModelUsage) -> AllRow {
+            let mut group = CodexGroup {
+                input_tokens: usage.input_tokens,
+                cached_input_tokens: usage.cached_input_tokens,
+                cache_write_tokens: usage.cache_write_tokens,
+                output_tokens: usage.output_tokens,
+                reasoning_output_tokens: usage.reasoning_output_tokens,
+                total_tokens: usage.total_tokens,
+                ..CodexGroup::default()
+            };
+            group.models.insert("gpt-5.6-sol".to_string(), usage);
+            let row = codex_group_row(
+                "2026-07-15",
+                &group,
+                &PricingMap::load_embedded(),
+                CodexSpeed::Standard,
+            );
+            filter_rows_by_model(vec![row], &["gpt-5.6-sol".to_string()])
+                .into_iter()
+                .next()
+                .unwrap()
+        }
+
+        let row_with_residual = filtered_row(crate::CodexModelUsage {
+            input_tokens: 140,
+            cached_input_tokens: 40,
+            cache_write_tokens: 20,
+            output_tokens: 5,
+            reasoning_output_tokens: 2,
+            total_tokens: 147,
+            ..crate::CodexModelUsage::default()
+        });
+        assert_eq!(row_with_residual.total_tokens, 147);
+        assert_eq!(row_with_residual.model_breakdowns[0].extra_total_tokens, 2);
+
+        let row_with_reasoning_in_output = filtered_row(crate::CodexModelUsage {
+            input_tokens: 100,
+            cached_input_tokens: 20,
+            output_tokens: 50,
+            reasoning_output_tokens: 20,
+            total_tokens: 150,
+            ..crate::CodexModelUsage::default()
+        });
+        assert_eq!(row_with_reasoning_in_output.total_tokens, 150);
+        assert_eq!(
+            row_with_reasoning_in_output.model_breakdowns[0].extra_total_tokens,
+            0
+        );
     }
 }

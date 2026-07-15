@@ -86,8 +86,45 @@ impl Cli {
         if let Some(extra) = parser.next() {
             return Err(format!("Unexpected argument '{extra}'"));
         }
+        reject_model_filter_for_focused_report(command.as_ref())?;
         Ok(Self { command, shared })
     }
+}
+
+fn reject_model_filter_for_focused_report(command: Option<&Command>) -> Result<(), String> {
+    let shared = match command {
+        Some(Command::Daily(args)) => Some(&args.shared),
+        Some(Command::Monthly(shared)) => Some(shared),
+        Some(Command::Weekly(args)) => Some(&args.shared),
+        Some(Command::Session(args)) => Some(&args.shared),
+        Some(Command::Blocks(args)) => Some(&args.shared),
+        Some(
+            Command::Codex(args)
+            | Command::NCode(args)
+            | Command::OpenCode(args)
+            | Command::Amp(args)
+            | Command::Droid(args)
+            | Command::Codebuff(args)
+            | Command::Hermes(args)
+            | Command::Pi(args)
+            | Command::Goose(args)
+            | Command::Kilo(args)
+            | Command::Copilot(args)
+            | Command::Gemini(args)
+            | Command::Kimi(args)
+            | Command::Qwen(args)
+            | Command::ZCode(args)
+            | Command::OpenClaw(args),
+        ) => Some(&args.shared),
+        Some(Command::All(_) | Command::Statusline(_) | Command::Mcp(_)) | None => None,
+    };
+    if shared.is_some_and(|shared| shared.model_filter.is_some()) {
+        return Err(
+            "`--model` is only supported for all-source reports; omit the agent command"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn control_arg(args: &[String]) -> Option<ControlArg> {
@@ -1192,5 +1229,24 @@ mod tests {
             args.shared.model_filter,
             Some(vec!["opus".to_string(), "claude-sonnet-4-6".to_string()])
         );
+    }
+
+    #[test]
+    fn rejects_model_filter_for_focused_agent_reports() {
+        for args in [
+            vec!["ccusage", "codex", "daily", "--model", "gpt"],
+            vec!["ccusage", "--model", "glm", "zcode", "daily"],
+            vec!["ccusage", "claude", "daily", "--model", "opus"],
+        ] {
+            let error = match Cli::parse_from(args.into_iter().map(OsString::from)) {
+                Ok(_) => panic!("focused report unexpectedly accepted --model"),
+                Err(error) => error,
+            };
+
+            assert_eq!(
+                error,
+                "`--model` is only supported for all-source reports; omit the agent command"
+            );
+        }
     }
 }

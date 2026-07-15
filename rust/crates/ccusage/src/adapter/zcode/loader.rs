@@ -41,7 +41,7 @@ fn load_database_entries(
     pricing: &PricingMap,
 ) -> Vec<LoadedEntry> {
     let Ok(connection) =
-        sqlite::Connection::open_with_flags(db_path, sqlite::OpenFlags::new().with_read_write())
+        sqlite::Connection::open_with_flags(db_path, sqlite::OpenFlags::new().with_read_only())
     else {
         crate::debug_log(
             shared,
@@ -216,6 +216,46 @@ mod tests {
         let entries = load_entries(&SharedArgs::default(), &PricingMap::load_embedded()).unwrap();
 
         std::env::remove_var(super::super::paths::ZCODE_DATA_DIR_ENV);
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn loads_read_only_zcode_database() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = fs_fixture!({});
+        let db_path = fixture.path("db.sqlite");
+        create_database(&db_path);
+        let db = sqlite::open(&db_path).unwrap();
+        db.execute(
+            "INSERT INTO session (id, directory, version) VALUES ('sess_test', '/work/api', '0.15.0')",
+        )
+        .unwrap();
+        db.execute(
+            "
+                INSERT INTO model_usage (
+                    id, session_id, provider_id, model_id, started_at,
+                    input_tokens, output_tokens,
+                    cache_creation_input_tokens, cache_read_input_tokens
+                ) VALUES (
+                    'usage_test', 'sess_test', 'builtin:zai-coding-plan', 'GLM-5.2',
+                    1783344730135, 100, 25, 20, 30
+                )
+            ",
+        )
+        .unwrap();
+        drop(db);
+        std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let entries = load_database_entries(
+            &db_path,
+            &SharedArgs::default(),
+            None,
+            &PricingMap::load_embedded(),
+        );
+
+        std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_eq!(entries.len(), 1);
     }
 

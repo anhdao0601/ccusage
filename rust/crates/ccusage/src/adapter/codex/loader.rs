@@ -689,6 +689,45 @@ mod tests {
     }
 
     #[test]
+    fn keeps_explicit_codex_auto_review_model_when_later_context_differs() {
+        let fixture = fs_fixture!({
+            "session.jsonl": [
+                json!({
+                    "timestamp": "2026-04-23T00:01:00.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "model": "codex-auto-review",
+                            "last_token_usage": {
+                                "input_tokens": 20,
+                                "output_tokens": 10,
+                                "total_tokens": 30,
+                            },
+                        },
+                    },
+                })
+                .to_string(),
+                json!({
+                    "timestamp": "2026-04-23T00:02:00.000Z",
+                    "type": "turn_context",
+                    "payload": {
+                        "model": "gpt-5.6-sol",
+                    },
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        });
+
+        let events = load_codex_events_from_directory(fixture.root(), true).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].model.as_deref(), Some("gpt-5.5"));
+        assert!(events[0].is_fallback_model);
+    }
+
+    #[test]
     fn skips_initial_codex_desktop_fork_replay_without_bootstrap_marker() {
         let fixture = fs_fixture!({
             "rollout-2026-06-15T08-13-09-019ec9b2-a82c-7b02-a6b1-44ec3c6e3723.jsonl": [

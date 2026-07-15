@@ -349,14 +349,17 @@ fn visit_codex_session_entry(
         *current_model_is_fallback = false;
     }
     let mut is_fallback_model = false;
+    let mut should_buffer_fallback = false;
     let model = parsed_model.or_else(|| current_model.clone()).or_else(|| {
         is_fallback_model = true;
+        should_buffer_fallback = true;
         *current_model_is_fallback = true;
         *current_model = Some("gpt-5".to_string());
         current_model.clone()
     });
     if parsed_model_is_missing(&model, current_model, *current_model_is_fallback) {
         is_fallback_model = true;
+        should_buffer_fallback = true;
     }
     let model = model.map(|model| {
         let (model, auto_review_fallback) = resolve_codex_log_model(&model, &timestamp);
@@ -376,7 +379,7 @@ fn visit_codex_session_entry(
         total_tokens: raw_usage.total_tokens,
         is_fallback_model,
     };
-    if is_fallback_model {
+    if should_buffer_fallback {
         pending_fallback_events.push(event);
         return Ok(());
     }
