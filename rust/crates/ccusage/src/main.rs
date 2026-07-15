@@ -12,6 +12,7 @@ mod fast;
 mod home;
 mod logger;
 mod mcp;
+mod model_aliases;
 mod output;
 mod pricing;
 mod pricing_cache;
@@ -26,6 +27,7 @@ pub(crate) use adapter::claude::{
     chunk_file_indexes_by_size, collect_files_with_extension, collect_usage_files,
     filter_loaded_entries_by_date, load_daily_summaries, load_entries,
 };
+pub(crate) use adapter::read_files_parallel;
 pub(crate) use blocks::{
     block_json, calculate_burn_rate, filter_blocks_by_date, format_remaining_time,
     identify_session_blocks, print_active_block_detail, print_blocks_table, sort_blocks,
@@ -773,6 +775,7 @@ mod tests {
                         cache_creation_input_tokens: 20,
                         cache_read_input_tokens: 10,
                         speed: None,
+                        cache_creation: None,
                     },
                     model: Some("claude-sonnet-4-20250514".to_string()),
                     id: Some("event-a".to_string()),
@@ -855,6 +858,7 @@ mod tests {
                         cache_creation_input_tokens: 20,
                         cache_read_input_tokens: 10,
                         speed: None,
+                        cache_creation: None,
                     },
                     model: Some("[pi] gpt-5.4".to_string()),
                     id: None,
@@ -905,6 +909,7 @@ mod tests {
                         cache_creation_input_tokens: 20,
                         cache_read_input_tokens: 10,
                         speed: None,
+                        cache_creation: None,
                     },
                     model: Some("claude-sonnet-4-20250514".to_string()),
                     id: Some("msg-1".to_string()),

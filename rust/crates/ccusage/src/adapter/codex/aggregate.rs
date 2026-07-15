@@ -230,12 +230,21 @@ fn add_event_to_groups(
     let Some(model) = event.model.as_deref().filter(|model| !model.is_empty()) else {
         return Ok(());
     };
+    let model = crate::model_aliases::resolve_model_name(model);
     let timestamp = parse_ts_timestamp(&event.timestamp)
         .ok_or_else(|| crate::cli_error(format!("Invalid Codex timestamp: {}", event.timestamp)))?;
-    if !insert_event_key(event, timestamp, model, seen) {
+    if !insert_event_key(event, timestamp, model.as_ref(), kind, seen) {
         return Ok(());
     }
-    add_deduped_event_to_groups(event, model, timestamp, kind, timezone, shared, groups)
+    add_deduped_event_to_groups(
+        event,
+        model.as_ref(),
+        timestamp,
+        kind,
+        timezone,
+        shared,
+        groups,
+    )
 }
 
 fn add_event_to_groups_local(
@@ -248,17 +257,18 @@ fn add_event_to_groups_local(
     let Some(model) = event.model.as_deref().filter(|model| !model.is_empty()) else {
         return Ok(());
     };
+    let model = crate::model_aliases::resolve_model_name(model);
     let timestamp = parse_ts_timestamp(&event.timestamp)
         .ok_or_else(|| crate::cli_error(format!("Invalid Codex timestamp: {}", event.timestamp)))?;
     if !aggregation
         .seen
-        .insert(codex_event_key(event, timestamp, model))
+        .insert(codex_event_key(event, timestamp, model.as_ref(), kind))
     {
         return Ok(());
     }
     add_deduped_event_to_groups(
         event,
-        model,
+        model.as_ref(),
         timestamp,
         kind,
         timezone,
@@ -338,9 +348,10 @@ fn insert_event_key(
     event: &CodexTokenUsageEvent,
     timestamp: crate::TimestampMs,
     model: &str,
+    kind: AgentReportKind,
     seen: &CodexDedupeShards,
 ) -> bool {
-    let key = codex_event_key(event, timestamp, model);
+    let key = codex_event_key(event, timestamp, model, kind);
     let mut hasher = FxHasher::default();
     key.hash(&mut hasher);
     let shard_index = hasher.finish() as usize % seen.len();
@@ -351,10 +362,16 @@ fn codex_event_key(
     event: &CodexTokenUsageEvent,
     timestamp: crate::TimestampMs,
     model: &str,
+    kind: AgentReportKind,
 ) -> CodexEventKey {
+    let (session_hash, session_len) = if kind == AgentReportKind::Session {
+        (hash_text(&event.session_id), event.session_id.len())
+    } else {
+        (0, 0)
+    };
     (
-        hash_text(&event.session_id),
-        event.session_id.len(),
+        session_hash,
+        session_len,
         timestamp,
         hash_text(model),
         model.len(),
@@ -409,6 +426,7 @@ pub(crate) fn aggregate_events(
     timezone: Option<&str>,
 ) -> Result<BTreeMap<String, CodexGroup>> {
     let mut groups = BTreeMap::new();
+    let mut seen = FxHashSet::default();
     let timezone = parse_tz(timezone).or_else(|| Some(JiffTimeZone::system()));
     for event in events {
         let Some(model) = event.model.as_deref().filter(|model| !model.is_empty()) else {
@@ -417,6 +435,10 @@ pub(crate) fn aggregate_events(
         let timestamp = parse_ts_timestamp(&event.timestamp).ok_or_else(|| {
             crate::cli_error(format!("Invalid Codex timestamp: {}", event.timestamp))
         })?;
+        let model = crate::model_aliases::resolve_model_name(model);
+        if !seen.insert(codex_event_key(event, timestamp, model.as_ref(), kind)) {
+            continue;
+        }
         let date = format_date_tz(timestamp, timezone.as_ref());
         let period = match kind {
             AgentReportKind::Daily => date,
@@ -425,7 +447,7 @@ pub(crate) fn aggregate_events(
             AgentReportKind::Session => event.session_id.clone(),
         };
         let group = groups.entry(period).or_insert_with(CodexGroup::default);
-        accumulate_codex_event_into_group(group, event, model);
+        accumulate_codex_event_into_group(group, event, model.as_ref());
     }
     Ok(groups)
 }
@@ -452,4 +474,169 @@ pub(crate) fn filter_events_by_date(
     }
     *events = kept;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ccusage_test_support::fs_fixture;
+    use serde_json::json;
+
+    use crate::model_aliases::set_model_aliases_for_tests;
+
+    #[test]
+    fn dedupes_copied_token_usage_across_session_files() {
+        let usage_line = json!({
+            "timestamp": "2026-05-29T08:01:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model": "gpt-5.2",
+                    "last_token_usage": {
+                        "input_tokens": 1_000,
+                        "cached_input_tokens": 100,
+                        "output_tokens": 200,
+                        "reasoning_output_tokens": 20,
+                        "total_tokens": 1_200,
+                    },
+                },
+            },
+        })
+        .to_string();
+        let fixture = fs_fixture!({
+            "sessions/root.jsonl": &usage_line,
+            "sessions/goal.jsonl": &usage_line,
+        });
+
+        for single_thread in [true, false] {
+            let shared = SharedArgs {
+                single_thread,
+                timezone: Some("UTC".to_string()),
+                ..SharedArgs::default()
+            };
+            let groups = load_groups_from_directory(
+                &fixture.path("sessions"),
+                &shared,
+                AgentReportKind::Daily,
+            )
+            .unwrap();
+
+            assert_eq!(groups.len(), 1);
+            let group = groups.get("2026-05-29").unwrap();
+            assert_eq!(group.input_tokens, 1_000);
+            assert_eq!(group.cached_input_tokens, 100);
+            assert_eq!(group.output_tokens, 200);
+            assert_eq!(group.reasoning_output_tokens, 20);
+            assert_eq!(group.total_tokens, 1_200);
+        }
+    }
+
+    #[test]
+    fn keeps_matching_token_usage_in_distinct_session_groups() {
+        let usage_line = json!({
+            "timestamp": "2026-05-29T08:01:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model": "gpt-5.2",
+                    "last_token_usage": {
+                        "input_tokens": 1_000,
+                        "cached_input_tokens": 100,
+                        "output_tokens": 200,
+                        "reasoning_output_tokens": 20,
+                        "total_tokens": 1_200,
+                    },
+                },
+            },
+        })
+        .to_string();
+        let fixture = fs_fixture!({
+            "sessions/root.jsonl": &usage_line,
+            "sessions/goal.jsonl": &usage_line,
+        });
+
+        for single_thread in [true, false] {
+            let shared = SharedArgs {
+                single_thread,
+                timezone: Some("UTC".to_string()),
+                ..SharedArgs::default()
+            };
+            let groups = load_groups_from_directory(
+                &fixture.path("sessions"),
+                &shared,
+                AgentReportKind::Session,
+            )
+            .unwrap();
+
+            assert_eq!(groups.len(), 2);
+            assert_eq!(groups["root"].input_tokens, 1_000);
+            assert_eq!(groups["goal"].input_tokens, 1_000);
+        }
+    }
+
+    #[test]
+    fn dedupes_copied_token_usage_after_model_alias_resolution() {
+        let _aliases = set_model_aliases_for_tests([("private-alpha", "gpt-5.2")]);
+        let private_usage_line = json!({
+            "timestamp": "2026-05-29T08:01:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model": "private-alpha",
+                    "last_token_usage": {
+                        "input_tokens": 1_000,
+                        "cached_input_tokens": 100,
+                        "output_tokens": 200,
+                        "reasoning_output_tokens": 20,
+                        "total_tokens": 1_200,
+                    },
+                },
+            },
+        })
+        .to_string();
+        let canonical_usage_line = json!({
+            "timestamp": "2026-05-29T08:01:00.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model": "gpt-5.2",
+                    "last_token_usage": {
+                        "input_tokens": 1_000,
+                        "cached_input_tokens": 100,
+                        "output_tokens": 200,
+                        "reasoning_output_tokens": 20,
+                        "total_tokens": 1_200,
+                    },
+                },
+            },
+        })
+        .to_string();
+        let fixture = fs_fixture!({
+            "sessions/root.jsonl": &private_usage_line,
+            "sessions/goal.jsonl": &canonical_usage_line,
+        });
+
+        for single_thread in [true, false] {
+            let shared = SharedArgs {
+                single_thread,
+                timezone: Some("UTC".to_string()),
+                ..SharedArgs::default()
+            };
+            let groups = load_groups_from_directory(
+                &fixture.path("sessions"),
+                &shared,
+                AgentReportKind::Daily,
+            )
+            .unwrap();
+
+            let group = groups.get("2026-05-29").unwrap();
+            assert_eq!(group.input_tokens, 1_000);
+            assert_eq!(group.models.len(), 1);
+            assert_eq!(group.models["gpt-5.2"].input_tokens, 1_000);
+        }
+    }
 }

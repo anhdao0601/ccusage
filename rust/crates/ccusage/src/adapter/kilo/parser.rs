@@ -32,6 +32,7 @@ pub(super) fn message_value_to_entry(
             .get("cache")
             .map_or(0, |cache| json_value_u64(cache.get("read"))),
         speed: None,
+        cache_creation: None,
     };
     let reasoning_tokens = json_value_u64(tokens.get("reasoning"));
     let total_tokens = json_value_u64(tokens.get("total"));

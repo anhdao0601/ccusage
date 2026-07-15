@@ -10,6 +10,7 @@ use crate::fast::FxHashMap;
 
 const BUILD_TIME_PRICING_JSON: &str =
     include_str!(concat!(env!("OUT_DIR"), "/litellm-pricing.json"));
+const BUILD_TIME_MODELS_DEV_JSON: &str = include_str!("models-dev-pricing.json");
 const FAST_MULTIPLIER_OVERRIDES_JSON: &str = include_str!("fast-multiplier-overrides.json");
 const LITELLM_PRICING_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
@@ -42,6 +43,7 @@ pub(crate) struct PricingMap {
     entries: FxHashMap<String, Pricing>,
     context_limits: FxHashMap<String, u64>,
     enable_models_dev_fallback: bool,
+    enable_embedded_models_dev_fallback: bool,
     // Memoizes fuzzy `find_entry` misses of the exact-key map; those fall back
     // to a full scan of `entries`, which is too slow to repeat per usage event.
     resolved_models: RwLock<FxHashMap<String, Option<Pricing>>>,
@@ -69,6 +71,13 @@ struct ProviderSpecificEntry {
 #[derive(Debug, Deserialize)]
 struct ModelsDevProvider {
     models: FxHashMap<String, ModelsDevModel>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ModelsDevJson {
+    Providers(FxHashMap<String, ModelsDevProvider>),
+    Models(FxHashMap<String, ModelsDevModel>),
 }
 
 struct ModelsDevPricingCache {
@@ -166,6 +175,7 @@ impl PricingMap {
         let fast_multiplier_overrides = FastMultiplierOverrides::load();
         map.load_json_with_overrides(BUILD_TIME_PRICING_JSON, &fast_multiplier_overrides);
         map.put_builtin_pricing(&fast_multiplier_overrides);
+        map.enable_embedded_models_dev_fallback = true;
         map
     }
 
@@ -279,64 +289,91 @@ impl PricingMap {
 
     fn load_models_dev_json_missing(&mut self, json: &str) -> Option<usize> {
         self.invalidate_resolved_models();
-        let Ok(raw) = serde_json::from_str::<FxHashMap<String, ModelsDevProvider>>(json) else {
-            return None;
-        };
+        let raw = serde_json::from_str::<ModelsDevJson>(json).ok()?;
+        Some(match raw {
+            ModelsDevJson::Providers(providers) => providers
+                .into_values()
+                .map(|provider| self.load_models_dev_models(provider.models))
+                .sum(),
+            ModelsDevJson::Models(models) => self.load_models_dev_models(models),
+        })
+    }
+
+    fn load_models_dev_models(&mut self, models: FxHashMap<String, ModelsDevModel>) -> usize {
         let mut loaded_count = 0;
-        for provider in raw.into_values() {
-            for (model_key, model) in provider.models {
-                let model_id = model.id.unwrap_or(model_key);
-                if self.entries.contains_key(&model_id) {
-                    continue;
-                }
-                let Some(cost) = model.cost else {
-                    continue;
-                };
-                let Some(input) = cost.input else {
-                    continue;
-                };
-                let Some(output) = cost.output else {
-                    continue;
-                };
-                let input = input / 1_000_000.0;
-                let output = output / 1_000_000.0;
-                let cache_read_explicit = cost.cache_read.is_some();
-                self.entries.insert(
-                    model_id.clone(),
-                    Pricing {
-                        input,
-                        output,
-                        cache_create: cost
-                            .cache_write
-                            .map(|value| value / 1_000_000.0)
-                            .unwrap_or(input * 1.25),
-                        cache_read: cost
-                            .cache_read
-                            .map(|value| value / 1_000_000.0)
-                            .unwrap_or(input * 0.1),
-                        cache_read_explicit,
-                        input_above_200k: None,
-                        output_above_200k: None,
-                        cache_create_above_200k: None,
-                        cache_read_above_200k: None,
-                        fast_multiplier: 1.0,
-                    },
-                );
-                if let Some(context_limit) = model.limit.and_then(|limit| limit.context) {
-                    self.context_limits.insert(model_id, context_limit);
-                }
-                loaded_count += 1;
+        for (model_key, model) in models {
+            let model_id = model.id.unwrap_or(model_key);
+            if self.entries.contains_key(&model_id) {
+                continue;
             }
+            let Some(cost) = model.cost else {
+                continue;
+            };
+            let Some(input) = cost.input else {
+                continue;
+            };
+            let Some(output) = cost.output else {
+                continue;
+            };
+            let input = input / 1_000_000.0;
+            let output = output / 1_000_000.0;
+            let cache_read_explicit = cost.cache_read.is_some();
+            self.entries.insert(
+                model_id.clone(),
+                Pricing {
+                    input,
+                    output,
+                    cache_create: cost
+                        .cache_write
+                        .map(|value| value / 1_000_000.0)
+                        .unwrap_or(input * 1.25),
+                    cache_read: cost
+                        .cache_read
+                        .map(|value| value / 1_000_000.0)
+                        .unwrap_or(input * 0.1),
+                    cache_read_explicit,
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_create_above_200k: None,
+                    cache_read_above_200k: None,
+                    fast_multiplier: 1.0,
+                },
+            );
+            if let Some(context_limit) = model.limit.and_then(|limit| limit.context) {
+                self.context_limits.insert(model_id, context_limit);
+            }
+            loaded_count += 1;
         }
-        Some(loaded_count)
+        loaded_count
     }
 
     pub(crate) fn find(&self, model: &str) -> Option<Pricing> {
-        self.find_entry(model).or_else(|| {
-            self.enable_models_dev_fallback
-                .then(|| models_dev_pricing().and_then(|pricing| pricing.find_entry(model)))
-                .flatten()
-        })
+        let alias = crate::model_aliases::resolve_model_name(model);
+        let resolved_alias = alias.as_ref();
+        self.find_entry_or_alias(model)
+            .or_else(|| {
+                (resolved_alias != model)
+                    .then(|| self.find_entry_or_alias(resolved_alias))
+                    .flatten()
+            })
+            .or_else(|| {
+                self.enable_models_dev_fallback
+                    .then(|| {
+                        models_dev_pricing()
+                            .and_then(|pricing| pricing.find_entry_or_alias(resolved_alias))
+                    })
+                    .flatten()
+            })
+            .or_else(|| {
+                self.enable_embedded_models_dev_fallback
+                    .then(|| embedded_models_dev_pricing().find_entry_or_alias(resolved_alias))
+                    .flatten()
+            })
+    }
+
+    fn find_entry_or_alias(&self, model: &str) -> Option<Pricing> {
+        self.find_entry(model)
+            .or_else(|| pricing_alias(model).and_then(|alias| self.find_entry(alias)))
     }
 
     fn find_entry(&self, model: &str) -> Option<Pricing> {
@@ -372,13 +409,35 @@ impl PricingMap {
     }
 
     pub(crate) fn context_limit(&self, model: &str) -> Option<u64> {
-        self.context_limit_entry(model).or_else(|| {
-            self.enable_models_dev_fallback
-                .then(|| {
-                    models_dev_pricing().and_then(|pricing| pricing.context_limit_entry(model))
-                })
-                .flatten()
-        })
+        let alias = crate::model_aliases::resolve_model_name(model);
+        let resolved_alias = alias.as_ref();
+        self.context_limit_entry_or_alias(model)
+            .or_else(|| {
+                (resolved_alias != model)
+                    .then(|| self.context_limit_entry_or_alias(resolved_alias))
+                    .flatten()
+            })
+            .or_else(|| {
+                self.enable_models_dev_fallback
+                    .then(|| {
+                        models_dev_pricing().and_then(|pricing| {
+                            pricing.context_limit_entry_or_alias(resolved_alias)
+                        })
+                    })
+                    .flatten()
+            })
+            .or_else(|| {
+                self.enable_embedded_models_dev_fallback
+                    .then(|| {
+                        embedded_models_dev_pricing().context_limit_entry_or_alias(resolved_alias)
+                    })
+                    .flatten()
+            })
+    }
+
+    fn context_limit_entry_or_alias(&self, model: &str) -> Option<u64> {
+        self.context_limit_entry(model)
+            .or_else(|| pricing_alias(model).and_then(|alias| self.context_limit_entry(alias)))
     }
 
     fn context_limit_entry(&self, model: &str) -> Option<u64> {
@@ -734,28 +793,33 @@ impl PricingMap {
             },
         );
         for (model, input, output, cache_read) in [
-            ("zai/glm-4.6", 0.6e-6, 2.2e-6, 0.11e-6),
-            ("zai/glm-4.7", 0.6e-6, 2.2e-6, 0.11e-6),
-            ("zai/glm-4.7-flash", 0.07e-6, 0.4e-6, 0.0),
-            ("zai/glm-5", 1.0e-6, 3.2e-6, 0.2e-6),
-            ("zai/glm-5.2", 1.4e-6, 4.4e-6, 0.26e-6),
-            ("zai/glm-5.2[1m]", 1.4e-6, 4.4e-6, 0.26e-6),
+            ("glm-4.5", 0.6e-6, 2.2e-6, 0.11e-6),
+            ("glm-4.5-x", 2.2e-6, 8.9e-6, 0.45e-6),
+            ("glm-4.5-air", 0.2e-6, 1.1e-6, 0.03e-6),
+            ("glm-4.5-airx", 1.1e-6, 4.5e-6, 0.22e-6),
+            ("glm-4.5v", 0.6e-6, 1.8e-6, 0.11e-6),
+            ("glm-4.5-flash", 0.0, 0.0, 0.0),
+            ("glm-4.6", 0.6e-6, 2.2e-6, 0.11e-6),
+            ("glm-4.7", 0.6e-6, 2.2e-6, 0.11e-6),
+            ("glm-4.7-flash", 0.07e-6, 0.4e-6, 0.0),
+            ("glm-5", 1.0e-6, 3.2e-6, 0.2e-6),
+            ("glm-5.2", 1.4e-6, 4.4e-6, 0.26e-6),
+            ("glm-5.2[1m]", 1.4e-6, 4.4e-6, 0.26e-6),
         ] {
-            self.entries.insert(
-                model.to_string(),
-                Pricing {
-                    input,
-                    output,
-                    cache_create: input * 1.25,
-                    cache_read,
-                    cache_read_explicit: true,
-                    input_above_200k: None,
-                    output_above_200k: None,
-                    cache_create_above_200k: None,
-                    cache_read_above_200k: None,
-                    fast_multiplier: 1.0,
-                },
-            );
+            let pricing = Pricing {
+                input,
+                output,
+                cache_create: 0.0,
+                cache_read,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                fast_multiplier: 1.0,
+            };
+            self.entries.insert(model.to_string(), pricing);
+            self.entries.insert(format!("zai/{model}"), pricing);
         }
         let gpt_5_1_pricing = Pricing {
             input: 1.25e-6,
@@ -1010,6 +1074,15 @@ fn normalized_pricing_key(value: &str) -> Cow<'_, str> {
     }
 }
 
+/// Maps Codex log labels that upstream pricing sources do not publish to
+/// canonical pricing keys.
+fn pricing_alias(model: &str) -> Option<&'static str> {
+    match model {
+        "gpt-5.3-spark" => Some("gpt-5.3-codex-spark"),
+        _ => None,
+    }
+}
+
 fn matches_model_suffix(part: &str, base: &str) -> bool {
     let Some(index) = part.rfind(base) else {
         return false;
@@ -1026,6 +1099,16 @@ fn models_dev_pricing() -> Option<&'static PricingMap> {
     static MODELS_DEV_PRICING: ModelsDevPricingCache =
         ModelsDevPricingCache::new(MODELS_DEV_FAILURE_RETRY_AFTER);
     MODELS_DEV_PRICING.get_or_try_load(fetch_models_dev_json)
+}
+
+fn embedded_models_dev_pricing() -> &'static PricingMap {
+    static EMBEDDED_MODELS_DEV_PRICING: OnceLock<PricingMap> = OnceLock::new();
+    EMBEDDED_MODELS_DEV_PRICING.get_or_init(|| {
+        let mut map = PricingMap::default();
+        map.load_models_dev_json_missing(BUILD_TIME_MODELS_DEV_JSON)
+            .expect("embedded models-dev-pricing.json must parse");
+        map
+    })
 }
 
 fn load_models_dev_pricing<F>(fetch_json: F) -> Option<PricingMap>
@@ -1086,7 +1169,7 @@ fn fetch_json_url(url: &str) -> std::io::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Pricing, PricingMap, BUILD_TIME_PRICING_JSON};
+    use super::{embedded_models_dev_pricing, Pricing, PricingMap, BUILD_TIME_PRICING_JSON};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
@@ -1094,6 +1177,19 @@ mod tests {
         let pricing = PricingMap::load_embedded();
         assert!(pricing.len() > 0);
         assert!(pricing.find("claude-sonnet-4-20250514").is_some());
+    }
+
+    #[test]
+    fn offline_resolves_models_only_in_embedded_models_dev() {
+        let offline = PricingMap::load_embedded();
+        let model = embedded_models_dev_pricing()
+            .entries
+            .keys()
+            .find(|model| offline.find_entry(model).is_none())
+            .expect("snapshot should contain a model absent from primary pricing");
+
+        assert!(offline.find(model).is_some());
+        assert!(PricingMap::default().find(model).is_none());
     }
 
     #[test]
@@ -1154,13 +1250,22 @@ mod tests {
     fn embedded_pricing_includes_opencode_glm_for_offline_reports() {
         let pricing = PricingMap::load_embedded();
 
-        assert!(pricing.find("glm-4.6").unwrap().input > 0.0);
-        assert!(pricing.find("glm-4.7").unwrap().output > 0.0);
-        assert!(pricing.find("glm-4.7-flash").unwrap().output > 0.0);
-        assert!(pricing.find("glm-5").unwrap().output > 0.0);
+        let glm_46 = pricing.find("glm-4.6").unwrap();
+        let glm_47 = pricing.find("glm-4.7").unwrap();
+        let glm_47_flash = pricing.find("glm-4.7-flash").unwrap();
+        let glm_5 = pricing.find("glm-5").unwrap();
+        assert!(glm_46.input > 0.0);
+        assert!(glm_47.output > 0.0);
+        assert!(glm_47_flash.output > 0.0);
+        assert!(glm_5.output > 0.0);
+        assert_eq!(glm_46.cache_create, 0.0);
+        assert_eq!(glm_47.cache_create, 0.0);
+        assert_eq!(glm_47_flash.cache_create, 0.0);
+        assert_eq!(glm_5.cache_create, 0.0);
         let glm_52 = pricing.find("glm-5.2").unwrap();
         assert_eq!(glm_52.input, 1.4e-6);
         assert_eq!(glm_52.output, 4.4e-6);
+        assert_eq!(glm_52.cache_create, 0.0);
         assert_eq!(glm_52.cache_read, 0.26e-6);
         assert!(glm_52.cache_read_explicit);
         assert_eq!(pricing.find("glm-5.2[1m]").unwrap().input, glm_52.input);
@@ -1531,6 +1636,60 @@ mod tests {
         assert_eq!(pricing.find("gpt-5.5").unwrap().fast_multiplier, 2.5);
         assert_eq!(pricing.find("gpt-5.4").unwrap().fast_multiplier, 2.0);
         assert_eq!(pricing.find("gpt-5.3-codex").unwrap().fast_multiplier, 2.0);
+    }
+
+    #[test]
+    fn embedded_pricing_does_not_resolve_undated_codex_auto_review_model() {
+        let pricing = PricingMap::load_embedded();
+
+        assert!(pricing.find("codex-auto-review").is_none());
+        assert!(pricing.context_limit("codex-auto-review").is_none());
+    }
+
+    #[test]
+    fn embedded_pricing_resolves_codex_spark_short_model_alias() {
+        let pricing = PricingMap::load_embedded();
+        let short_spark = pricing
+            .find("gpt-5.3-spark")
+            .expect("gpt-5.3-spark should resolve via model alias");
+        let codex_spark = pricing
+            .find("gpt-5.3-codex-spark")
+            .expect("canonical Codex Spark pricing should exist");
+
+        assert_eq!(short_spark.input, codex_spark.input);
+        assert_eq!(short_spark.output, codex_spark.output);
+        assert_eq!(short_spark.cache_read, codex_spark.cache_read);
+        assert_eq!(short_spark.fast_multiplier, codex_spark.fast_multiplier);
+    }
+
+    #[test]
+    fn pricing_lookup_resolves_configured_private_model_alias() {
+        let _aliases =
+            crate::model_aliases::set_model_aliases_for_tests([("private-gpt-55", "gpt-5.5")]);
+        let pricing = PricingMap::load_embedded();
+
+        let private = pricing.find("private-gpt-55").unwrap();
+        let canonical = pricing.find("gpt-5.5").unwrap();
+
+        assert_eq!(private.input, canonical.input);
+        assert_eq!(private.output, canonical.output);
+        assert_eq!(pricing.context_limit("private-gpt-55"), Some(1_050_000));
+    }
+
+    #[test]
+    fn pricing_lookup_prefers_known_original_model_before_alias() {
+        let _aliases =
+            crate::model_aliases::set_model_aliases_for_tests([("claude-opus-4-8", "mythos-5")]);
+        let pricing = PricingMap::load_embedded();
+
+        let original = pricing.find_entry("claude-opus-4-8").unwrap();
+        let resolved = pricing.find("claude-opus-4-8").unwrap();
+
+        assert_eq!(resolved.input, original.input);
+        assert_eq!(
+            pricing.context_limit("claude-opus-4-8"),
+            pricing.context_limit_entry("claude-opus-4-8")
+        );
     }
 
     #[test]

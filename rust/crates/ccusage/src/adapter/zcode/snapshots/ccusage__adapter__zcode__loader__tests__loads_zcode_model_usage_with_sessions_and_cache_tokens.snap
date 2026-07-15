@@ -14,7 +14,7 @@ expression: "super::super::report::report_from_rows(&rows,\ncrate::cli::AgentRep
       ],
       "outputTokens": 25,
       "sessionId": "sess_test",
-      "totalCost": 0.00022279999999999997,
+      "totalCost": 0.00018779999999999998,
       "totalTokens": 125
     }
   ],
@@ -23,7 +23,7 @@ expression: "super::super::report::report_from_rows(&rows,\ncrate::cli::AgentRep
     "cacheReadTokens": 30,
     "inputTokens": 50,
     "outputTokens": 25,
-    "totalCost": 0.00022279999999999997,
+    "totalCost": 0.00018779999999999998,
     "totalTokens": 125
   }
 }

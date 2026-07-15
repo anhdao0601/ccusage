@@ -3,7 +3,9 @@ use std::{collections::HashSet, path::Path};
 use jiff::tz::TimeZone as JiffTimeZone;
 use serde_json::Value;
 
-use crate::{cli::SharedArgs, debug_log, parse_tz, LoadedEntry, PricingMap, Result};
+use crate::{
+    cli::SharedArgs, debug_log, parse_tz, read_files_parallel, LoadedEntry, PricingMap, Result,
+};
 
 use super::{
     parser::message_value_to_entry,
@@ -18,13 +20,17 @@ pub(crate) fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<
 
 fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
+    let db_paths = paths()?
+        .into_iter()
+        .filter_map(|path| db_path(&path))
+        .collect::<Vec<_>>();
+    let loaded = read_files_parallel(&db_paths, shared.single_thread, |db_path| {
+        load_entries_from_database(db_path, tz.as_ref(), shared, pricing)
+    });
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
-    for path in paths()? {
-        let Some(db_path) = db_path(&path) else {
-            continue;
-        };
-        for entry in load_entries_from_database(&db_path, tz.as_ref(), shared, pricing) {
+    for db_entries in loaded {
+        for entry in db_entries {
             if let Some(id) = entry.data.message.id.as_deref() {
                 if !seen.insert(id.to_string()) {
                     continue;

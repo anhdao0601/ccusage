@@ -41,6 +41,7 @@ pub(super) fn row_to_entry(
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: 0,
         speed: None,
+        cache_creation: None,
     };
     let timestamp_text = crate::format_rfc3339_millis(timestamp);
     let data = UsageEntry {

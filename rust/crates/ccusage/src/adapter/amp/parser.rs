@@ -76,6 +76,7 @@ fn parse_ledger_events(
             cache_creation_input_tokens: cache.0,
             cache_read_input_tokens: cache.1,
             speed: None,
+            cache_creation: None,
         };
         let total_tokens = json_value_u64(tokens.get("total"));
         let (usage, extra_total_tokens) = apply_total_token_fallback(usage, 0, total_tokens);
@@ -179,6 +180,7 @@ fn parse_message_usage(
             cache_creation_input_tokens: json_value_u64(usage.get("cacheCreationInputTokens")),
             cache_read_input_tokens: json_value_u64(usage.get("cacheReadInputTokens")),
             speed: None,
+            cache_creation: None,
         };
         let total_tokens = json_value_u64(usage.get("totalTokens"));
         let (usage_raw, extra_total_tokens) =

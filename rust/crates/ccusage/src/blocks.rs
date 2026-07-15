@@ -88,8 +88,9 @@ fn create_block(
         token_counts.add_usage(entry.data.message.usage);
         cost += entry.cost;
         if let Some(model) = &entry.model {
+            let model = crate::model_aliases::resolve_model_name(model).into_owned();
             if seen_models.insert(model.clone()) {
-                models.push(model.clone());
+                models.push(model);
             }
         }
         usage_limit_reset_time = usage_limit_reset_time.or(entry.usage_limit_reset_time);
@@ -564,5 +565,61 @@ pub(crate) fn format_remaining_time(minutes: i64) -> String {
         format!("{hours}h {mins}m left")
     } else {
         format!("{mins}m left")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{TokenUsageRaw, UsageEntry, UsageMessage};
+
+    #[test]
+    fn session_blocks_merge_configured_model_aliases() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([
+            ("private-claude-a", "claude-opus-4-8"),
+            ("private-claude-b", "claude-opus-4-8"),
+        ]);
+        let start = TimestampMs::from_millis(1_767_316_800_000);
+        let entries = vec![
+            loaded_entry("private-claude-a", start),
+            loaded_entry("private-claude-b", start.checked_add_millis(1_000).unwrap()),
+        ];
+
+        let block = create_block(start, entries, start, MILLIS_PER_HOUR);
+
+        assert_eq!(block.models, vec!["claude-opus-4-8"]);
+    }
+
+    fn loaded_entry(model: &str, timestamp: TimestampMs) -> LoadedEntry {
+        LoadedEntry {
+            data: UsageEntry {
+                session_id: Some("session-a".to_string()),
+                timestamp: format_rfc3339_millis(timestamp),
+                version: Some("1.0.0".to_string()),
+                message: UsageMessage {
+                    usage: TokenUsageRaw::default(),
+                    model: Some(model.to_string()),
+                    id: Some(format!("msg-{model}")),
+                },
+                cost_usd: None,
+                request_id: None,
+                is_api_error_message: None,
+                is_sidechain: None,
+            },
+            timestamp,
+            date: "2026-01-02".to_string(),
+            project: Arc::from("project-a"),
+            session_id: Arc::from("session-a"),
+            project_path: Arc::from("/workspace/project-a"),
+            cost: 0.0,
+            extra_total_tokens: 0,
+            credits: None,
+            message_count: None,
+            model: Some(model.to_string()),
+            usage_limit_reset_time: None,
+            missing_pricing_model: None,
+        }
     }
 }

@@ -1,5 +1,6 @@
 use crate::{
-    cli::SharedArgs, collect_files_with_extension, parse_tz, LoadedEntry, PricingMap, Result,
+    cli::SharedArgs, collect_files_with_extension, parse_tz, read_files_parallel, LoadedEntry,
+    PricingMap, Result,
 };
 
 use super::{parser, paths};
@@ -17,13 +18,11 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
         let threads_dir = path.join("threads");
         let mut files = Vec::new();
         collect_files_with_extension(&threads_dir, "json", &mut files);
-        for file in files {
-            entries.extend(parser::read_thread_file(
-                &file,
-                tz.as_ref(),
-                shared.mode,
-                Some(pricing),
-            )?);
+        let loaded = read_files_parallel(&files, shared.single_thread, |file| {
+            parser::read_thread_file(file, tz.as_ref(), shared.mode, Some(pricing))
+        });
+        for file_entries in loaded {
+            entries.extend(file_entries?);
         }
     }
     entries.sort_by_key(|entry| entry.timestamp);

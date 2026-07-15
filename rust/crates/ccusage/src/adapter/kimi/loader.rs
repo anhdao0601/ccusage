@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{cli::SharedArgs, parse_tz, LoadedEntry, PricingMap, Result};
+use crate::{cli::SharedArgs, parse_tz, read_files_parallel, LoadedEntry, PricingMap, Result};
 
 use super::{
     parser::{kimi_entry_key, kimi_entry_to_loaded, read_wire_file},
@@ -15,10 +15,12 @@ pub(crate) fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<
 
 fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
+    let files = discover_wire_files()?;
+    let loaded = read_files_parallel(&files, shared.single_thread, read_wire_file);
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
-    for file in discover_wire_files()? {
-        for entry in read_wire_file(&file)? {
+    for file_entries in loaded {
+        for entry in file_entries? {
             let key = kimi_entry_key(&entry);
             if seen.insert(key) {
                 entries.push(kimi_entry_to_loaded(

@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{cli::SharedArgs, collect_files_with_extension, parse_tz, LoadedEntry, Result};
+use crate::{
+    cli::SharedArgs, collect_files_with_extension, parse_tz, read_files_parallel, LoadedEntry,
+    Result,
+};
 
 use super::{parser, paths};
 
@@ -20,8 +23,11 @@ fn load_entries_inner(shared: &SharedArgs, custom_path: Option<&str>) -> Result<
     for path in paths::paths(custom_path)? {
         let mut files = Vec::new();
         collect_files_with_extension(&path, "jsonl", &mut files);
-        for file in files {
-            for entry in parser::read_session_file(&file, tz.as_ref())? {
+        let loaded = read_files_parallel(&files, shared.single_thread, |file| {
+            parser::read_session_file(file, tz.as_ref())
+        });
+        for file_entries in loaded {
+            for entry in file_entries? {
                 let id = parser::entry_id(&entry);
                 if seen.insert(id) {
                     entries.push(entry);

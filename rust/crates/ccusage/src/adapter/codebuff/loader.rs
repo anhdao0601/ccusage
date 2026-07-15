@@ -7,8 +7,8 @@ use super::{
     paths::discover_chat_files,
 };
 use crate::{
-    cli::SharedArgs, format_date_tz, parse_tz, LoadedEntry, PricingMap, Result, UsageEntry,
-    UsageMessage,
+    cli::SharedArgs, format_date_tz, parse_tz, read_files_parallel, LoadedEntry, PricingMap,
+    Result, UsageEntry, UsageMessage,
 };
 
 pub(crate) fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
@@ -23,9 +23,10 @@ fn load_entries_inner(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<L
     let tz = parse_tz(shared.timezone.as_deref());
     let mut files = discover_chat_files()?;
     files.sort();
+    let loaded = read_files_parallel(&files, shared.single_thread, load_chat_file);
     let mut deduped = HashMap::<String, CodebuffEntry>::new();
-    for file in files {
-        for entry in load_chat_file(&file)? {
+    for file_entries in loaded {
+        for entry in file_entries? {
             deduped.insert(entry.dedup_key.clone(), entry);
         }
     }
@@ -193,6 +194,7 @@ mod tests {
                         cache_creation_input_tokens: 20,
                         cache_read_input_tokens: 10,
                         speed: None,
+                        cache_creation: None,
                     },
                     model: Some("claude-sonnet-4-20250514".to_string()),
                     id: Some("message-a".to_string()),

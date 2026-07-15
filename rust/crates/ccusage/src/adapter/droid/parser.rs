@@ -84,6 +84,7 @@ pub(super) fn load_settings_file(path: &Path) -> Result<Option<DroidEntry>> {
             cache_creation_input_tokens: usage.cache_creation_tokens,
             cache_read_input_tokens: usage.cache_read_tokens,
             speed: None,
+            cache_creation: None,
         },
         reasoning_tokens: usage.thinking_tokens,
     }))
@@ -97,6 +98,7 @@ pub(super) fn parse_token_usage(value: Option<&Value>) -> Option<DroidTokenUsage
         cache_creation_input_tokens: json_value_u64(usage.get("cacheCreationTokens")),
         cache_read_input_tokens: json_value_u64(usage.get("cacheReadTokens")),
         speed: None,
+        cache_creation: None,
     };
     let thinking_tokens = json_value_u64(usage.get("thinkingTokens"));
     let total_tokens = json_value_u64(usage.get("totalTokens"));

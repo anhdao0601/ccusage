@@ -15,8 +15,8 @@ use crate::{
     apply_total_token_fallback, calculate_cost_for_usage,
     cli::{CostMode, SharedArgs},
     format_date_tz, format_rfc3339_millis, json_value_u64, missing_pricing_model_for_candidates,
-    non_empty_json_string, parse_ts_timestamp, parse_tz, LoadedEntry, PricingMap, Result,
-    TimestampMs, TokenUsageRaw, UsageEntry, UsageMessage,
+    non_empty_json_string, parse_ts_timestamp, parse_tz, read_files_parallel, LoadedEntry,
+    PricingMap, Result, TimestampMs, TokenUsageRaw, UsageEntry, UsageMessage,
 };
 
 const DEFAULT_QWEN_MODEL: &str = "unknown";
@@ -32,10 +32,14 @@ pub(super) fn load_entries(shared: &SharedArgs) -> Result<Vec<LoadedEntry>> {
         ))
     };
     let tz = parse_tz(shared.timezone.as_deref());
+    let files = paths::discover_chat_files()?;
+    let loaded = read_files_parallel(&files, shared.single_thread, |file| {
+        read_chat_file(file, tz.as_ref(), shared.mode, pricing.as_ref(), shared)
+    });
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
-    for file in paths::discover_chat_files()? {
-        for entry in read_chat_file(&file, tz.as_ref(), shared.mode, pricing.as_ref(), shared)? {
+    for file_entries in loaded {
+        for entry in file_entries? {
             if seen.insert(entry_id(&entry)) {
                 entries.push(entry);
             }
@@ -94,6 +98,7 @@ fn parse_line(
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: cache_read_tokens,
         speed: None,
+        cache_creation: None,
     };
     let (display_usage, extra_total_tokens) =
         apply_total_token_fallback(display_usage, reasoning_tokens, total_tokens);
@@ -272,6 +277,7 @@ mod tests {
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
                 speed: None,
+                cache_creation: None,
             },
             CostMode::Calculate,
             Some(&pricing),
@@ -318,6 +324,7 @@ mod tests {
                         cache_creation_input_tokens: 0,
                         cache_read_input_tokens: 3,
                         speed: None,
+                        cache_creation: None,
                     },
                     model: Some("model:1".to_string()),
                     id: None,

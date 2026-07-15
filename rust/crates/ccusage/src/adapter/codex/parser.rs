@@ -7,6 +7,7 @@ use std::{
 };
 
 use memchr::memmem::Finder;
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{CodexRawUsage, CodexTokenUsageEvent, Result, TimestampMs};
@@ -38,6 +39,21 @@ static INPUT_TOKENS_FIELD_FINDER: LazyLock<Finder<'static>> =
 static PROMPT_TOKENS_FIELD_FINDER: LazyLock<Finder<'static>> =
     LazyLock::new(|| Finder::new(br#""prompt_tokens":"#));
 const FORK_REPLAY_GRACE_MS: i64 = 1_000;
+const CODEX_AUTO_REVIEW_MODEL: &str = "codex-auto-review";
+const CODEX_AUTO_REVIEW_FALLBACKS_JSON: &str = include_str!("codex-auto-review-fallbacks.json");
+
+static CODEX_AUTO_REVIEW_FALLBACK_MODELS: LazyLock<Vec<CodexAutoReviewFallback<'static>>> =
+    LazyLock::new(|| {
+        serde_json::from_str(CODEX_AUTO_REVIEW_FALLBACKS_JSON)
+            .expect("embedded codex-auto-review fallback snapshot must parse")
+    });
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexAutoReviewFallback<'a> {
+    released_on: &'a str,
+    model: &'a str,
+}
 
 #[derive(Clone, Copy)]
 enum CodexLineKind {
@@ -255,8 +271,9 @@ impl PendingFallbackEvents {
         visit: &mut impl FnMut(CodexTokenUsageEvent) -> Result<()>,
     ) -> Result<()> {
         for mut event in self.events.drain(..) {
-            event.model = Some(model.to_string());
-            event.is_fallback_model = false;
+            let (model, is_fallback_model) = resolve_codex_log_model(model, &event.timestamp);
+            event.model = Some(model);
+            event.is_fallback_model = is_fallback_model;
             visit(event)?;
         }
         Ok(())
@@ -341,6 +358,11 @@ fn visit_codex_session_entry(
     if parsed_model_is_missing(&model, current_model, *current_model_is_fallback) {
         is_fallback_model = true;
     }
+    let model = model.map(|model| {
+        let (model, auto_review_fallback) = resolve_codex_log_model(&model, &timestamp);
+        is_fallback_model |= auto_review_fallback;
+        model
+    });
 
     let event = CodexTokenUsageEvent {
         session_id: session_id.to_string(),
@@ -437,6 +459,11 @@ fn visit_codex_exec_usage_event(
     if parsed_model_is_missing(&model, current_model, *current_model_is_fallback) {
         is_fallback_model = true;
     }
+    let model = model.map(|model| {
+        let (model, auto_review_fallback) = resolve_codex_log_model(&model, &timestamp);
+        is_fallback_model |= auto_review_fallback;
+        model
+    });
     visit(CodexTokenUsageEvent {
         session_id: session_id.to_string(),
         timestamp,
@@ -560,6 +587,68 @@ fn parsed_model_is_missing(
     current_model_is_fallback: bool,
 ) -> bool {
     model.is_some() && current_model.is_some() && current_model_is_fallback
+}
+
+fn resolve_codex_log_model(model: &str, timestamp: &str) -> (String, bool) {
+    let Some(fallback) = codex_log_model_fallback(model, timestamp) else {
+        return (model.to_string(), false);
+    };
+    (fallback.to_string(), true)
+}
+
+fn codex_log_model_fallback(model: &str, timestamp: &str) -> Option<&'static str> {
+    if model != CODEX_AUTO_REVIEW_MODEL {
+        return None;
+    }
+    let Some(date) = codex_timestamp_date(timestamp) else {
+        return Some("gpt-5");
+    };
+    Some(
+        CODEX_AUTO_REVIEW_FALLBACK_MODELS
+            .iter()
+            .find_map(|fallback| (date >= fallback.released_on).then_some(fallback.model))
+            .unwrap_or("gpt-5"),
+    )
+}
+
+fn codex_timestamp_date(timestamp: &str) -> Option<&str> {
+    let date = timestamp.get(..10)?;
+    let bytes = date.as_bytes();
+    if !(bytes.len() == 10
+        && bytes[0..4].iter().all(u8::is_ascii_digit)
+        && bytes[4] == b'-'
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[7] == b'-'
+        && bytes[8..10].iter().all(u8::is_ascii_digit))
+    {
+        return None;
+    }
+    let year = codex_date_part(&bytes[0..4])?;
+    let month = codex_date_part(&bytes[5..7])?;
+    let day = codex_date_part(&bytes[8..10])?;
+    let max_day = codex_days_in_month(year, month)?;
+    (day >= 1 && day <= max_day).then_some(date)
+}
+
+fn codex_date_part(bytes: &[u8]) -> Option<u16> {
+    bytes.iter().try_fold(0u16, |value, byte| {
+        let digit = byte.checked_sub(b'0')?;
+        (digit <= 9).then_some(value * 10 + u16::from(digit))
+    })
+}
+
+fn codex_days_in_month(year: u16, month: u16) -> Option<u16> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
+        4 | 6 | 9 | 11 => Some(30),
+        2 if codex_is_leap_year(year) => Some(29),
+        2 => Some(28),
+        _ => None,
+    }
+}
+
+fn codex_is_leap_year(year: u16) -> bool {
+    year % 4 == 0 && year % 100 != 0 || year % 400 == 0
 }
 
 fn codex_session_id(sessions_dir: &Path, path: &Path) -> String {

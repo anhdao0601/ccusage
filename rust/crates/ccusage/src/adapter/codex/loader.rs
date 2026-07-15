@@ -1,12 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use compact_str::CompactString;
-
 #[cfg(not(test))]
 use crate::chunk_file_indexes_by_size;
-use crate::{
-    cli::SharedArgs, collect_usage_files, fast::FxHashSet, progress, CodexTokenUsageEvent, Result,
-};
+use crate::{cli::SharedArgs, collect_usage_files, progress, CodexTokenUsageEvent, Result};
 #[cfg(not(test))]
 use std::thread;
 
@@ -21,9 +17,11 @@ pub(crate) fn load_codex_events_from_directory(
     let mut files = Vec::new();
     collect_usage_files(sessions_dir, &mut files);
     files.sort_by_cached_key(|path| path.to_string_lossy().into_owned());
-    let mut events = read_codex_session_files_with_index(sessions_dir, &files, single_thread);
-    dedupe_codex_events(&mut events);
-    Ok(events)
+    Ok(read_codex_session_files_with_index(
+        sessions_dir,
+        &files,
+        single_thread,
+    ))
 }
 
 pub(crate) fn load_codex_events(shared: &SharedArgs) -> Result<Vec<CodexTokenUsageEvent>> {
@@ -40,7 +38,6 @@ fn load_codex_events_inner(shared: &SharedArgs) -> Result<Vec<CodexTokenUsageEve
             shared.single_thread,
         )?);
     }
-    dedupe_codex_events(&mut events);
     Ok(events)
 }
 
@@ -190,22 +187,6 @@ fn read_codex_session_file(sessions_dir: &Path, path: &Path) -> Vec<CodexTokenUs
     events
 }
 
-fn dedupe_codex_events(events: &mut Vec<CodexTokenUsageEvent>) {
-    let mut seen = FxHashSet::default();
-    events.retain(|event| {
-        seen.insert((
-            CompactString::new(&event.timestamp),
-            event.model.as_deref().map(CompactString::new),
-            event.input_tokens,
-            event.cached_input_tokens,
-            event.cache_write_tokens,
-            event.output_tokens,
-            event.reasoning_output_tokens,
-            event.total_tokens,
-        ))
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,33 +194,8 @@ mod tests {
     use ccusage_test_support::fs_fixture;
     use serde_json::json;
 
-    fn codex_event(session_id: &str) -> CodexTokenUsageEvent {
-        CodexTokenUsageEvent {
-            session_id: session_id.to_string(),
-            timestamp: "2026-01-02T00:00:00.000Z".to_string(),
-            model: Some("gpt-5".to_string()),
-            input_tokens: 100,
-            cached_input_tokens: 10,
-            cache_write_tokens: 0,
-            output_tokens: 50,
-            reasoning_output_tokens: 0,
-            total_tokens: 150,
-            is_fallback_model: false,
-        }
-    }
-
     #[test]
-    fn dedupes_matching_codex_usage_events_from_distinct_sessions() {
-        let mut events = vec![codex_event("session-a"), codex_event("session-b")];
-
-        dedupe_codex_events(&mut events);
-
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].session_id, "session-a");
-    }
-
-    #[test]
-    fn dedupes_copied_branch_history_across_session_files() {
+    fn loads_copied_branch_history_for_report_aware_dedupe() {
         let parent_history = [
             json!({
                 "timestamp": "2026-05-12T08:00:00.000Z",
@@ -297,7 +253,7 @@ mod tests {
         for single_thread in [true, false] {
             let events = load_codex_events_from_directory(fixture.root(), single_thread).unwrap();
 
-            assert_eq!(events.len(), 2);
+            assert_eq!(events.len(), 3);
             assert_eq!(events[0].session_id, "2026-05-12T08-00-00-parent");
             assert_eq!(events[0].input_tokens, 1_000);
             assert_eq!(events[0].cached_input_tokens, 100);
@@ -305,11 +261,26 @@ mod tests {
             assert_eq!(events[0].reasoning_output_tokens, 20);
             assert_eq!(events[0].total_tokens, 1_200);
             assert_eq!(events[1].session_id, "2026-05-12T08-02-00-branch");
-            assert_eq!(events[1].input_tokens, 600);
-            assert_eq!(events[1].cached_input_tokens, 200);
-            assert_eq!(events[1].output_tokens, 250);
-            assert_eq!(events[1].reasoning_output_tokens, 20);
-            assert_eq!(events[1].total_tokens, 850);
+            assert_eq!(events[1].input_tokens, 1_000);
+            assert_eq!(events[2].session_id, "2026-05-12T08-02-00-branch");
+            assert_eq!(events[2].input_tokens, 600);
+            assert_eq!(events[2].cached_input_tokens, 200);
+            assert_eq!(events[2].output_tokens, 250);
+            assert_eq!(events[2].reasoning_output_tokens, 20);
+            assert_eq!(events[2].total_tokens, 850);
+
+            let groups = crate::adapter::codex::aggregate_events(
+                &events,
+                crate::cli::AgentReportKind::Daily,
+                Some("UTC"),
+            )
+            .unwrap();
+            let group = groups.get("2026-05-12").unwrap();
+            assert_eq!(group.input_tokens, 1_600);
+            assert_eq!(group.cached_input_tokens, 300);
+            assert_eq!(group.output_tokens, 450);
+            assert_eq!(group.reasoning_output_tokens, 40);
+            assert_eq!(group.total_tokens, 2_050);
         }
     }
 
@@ -587,6 +558,134 @@ mod tests {
             vec![Some("gpt-5.5"), Some("gpt-5.5")]
         );
         assert!(events.iter().all(|event| !event.is_fallback_model));
+    }
+
+    #[test]
+    fn resolves_codex_auto_review_to_latest_model_for_event_date() {
+        let fixture = fs_fixture!({
+            "run.jsonl": [
+                json!({
+                    "type": "turn.completed",
+                    "timestamp": "2026-02-05T00:00:00.000Z",
+                    "model": "codex-auto-review",
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "total_tokens": 15,
+                    },
+                })
+                .to_string(),
+                json!({
+                    "type": "turn.completed",
+                    "timestamp": "2026-03-05T00:00:00.000Z",
+                    "model": "codex-auto-review",
+                    "usage": {
+                        "input_tokens": 20,
+                        "output_tokens": 10,
+                        "total_tokens": 30,
+                    },
+                })
+                .to_string(),
+                json!({
+                    "type": "turn.completed",
+                    "timestamp": "2026-04-23T00:00:00.000Z",
+                    "model": "codex-auto-review",
+                    "usage": {
+                        "input_tokens": 30,
+                        "output_tokens": 15,
+                        "total_tokens": 45,
+                    },
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        });
+
+        let events = load_codex_events_from_directory(fixture.root(), true).unwrap();
+
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].model.as_deref(), Some("gpt-5.3-codex"));
+        assert_eq!(events[1].model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(events[2].model.as_deref(), Some("gpt-5.5"));
+        assert!(events.iter().all(|event| event.is_fallback_model));
+    }
+
+    #[test]
+    fn resolves_codex_auto_review_uses_created_at_when_top_level_timestamp_is_malformed() {
+        let fixture = fs_fixture!({
+            "run.jsonl": json!({
+                "type": "turn.completed",
+                "timestamp": "not-a-date",
+                "created_at": "2025-12-11T00:00:00.000Z",
+                "model": "codex-auto-review",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                },
+            })
+            .to_string(),
+        });
+
+        let events = load_codex_events_from_directory(fixture.root(), true).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].model.as_deref(), Some("gpt-5.2-codex"));
+        assert!(events[0].is_fallback_model);
+    }
+
+    #[test]
+    fn resolves_codex_auto_review_turn_context_for_each_event_date() {
+        let fixture = fs_fixture!({
+            "session.jsonl": [
+                json!({
+                    "timestamp": "2025-12-11T00:00:00.000Z",
+                    "type": "turn_context",
+                    "payload": {
+                        "model": "codex-auto-review",
+                    },
+                })
+                .to_string(),
+                json!({
+                    "timestamp": "2025-12-11T00:01:00.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 5,
+                                "total_tokens": 15,
+                            },
+                        },
+                    },
+                })
+                .to_string(),
+                json!({
+                    "timestamp": "2026-04-23T00:01:00.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 20,
+                                "output_tokens": 10,
+                                "total_tokens": 30,
+                            },
+                        },
+                    },
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        });
+
+        let events = load_codex_events_from_directory(fixture.root(), true).unwrap();
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(events[1].model.as_deref(), Some("gpt-5.5"));
+        assert!(events.iter().all(|event| event.is_fallback_model));
     }
 
     #[test]

@@ -67,6 +67,7 @@ pub(super) fn to_loaded_entry(
         cache_creation_input_tokens: entry.cache_creation_input_tokens,
         cache_read_input_tokens: entry.cache_read_input_tokens,
         speed: None,
+        cache_creation: None,
     };
     let candidates = model_candidates(&entry.provider_id, &entry.model_id);
     let cost = candidates

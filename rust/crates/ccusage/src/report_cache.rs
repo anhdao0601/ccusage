@@ -161,6 +161,7 @@ fn cache_key(command: &str, parameters: &Value, source_fingerprint: &str, pricin
         "parameters": parameters,
         "sourceFingerprint": source_fingerprint,
         "pricing": pricing,
+        "modelAliases": crate::model_aliases::cache_fingerprint(),
     });
     format!("{:016x}", hash_bytes(value.to_string().as_bytes()))
 }
@@ -532,7 +533,7 @@ fn hermes_sources() -> Vec<ReportSource> {
         .unwrap_or_default();
     dirs.into_iter()
         .enumerate()
-        .map(|(index, path)| exact_file(format!("hermes:{index}"), path.join("state.db")))
+        .flat_map(|(index, path)| sqlite_sources(format!("hermes:{index}"), path.join("state.db")))
         .collect()
 }
 
@@ -584,7 +585,7 @@ fn goose_sources() -> Vec<ReportSource> {
     paths
         .into_iter()
         .enumerate()
-        .map(|(index, path)| exact_file(format!("goose:{index}"), path))
+        .flat_map(|(index, path)| sqlite_sources(format!("goose:{index}"), path))
         .collect()
 }
 
@@ -627,7 +628,7 @@ fn kilo_sources() -> Vec<ReportSource> {
         .unwrap_or_default();
     dirs.into_iter()
         .enumerate()
-        .map(|(index, path)| exact_file(format!("kilo:{index}"), path.join("kilo.db")))
+        .flat_map(|(index, path)| sqlite_sources(format!("kilo:{index}"), path.join("kilo.db")))
         .collect()
 }
 
@@ -713,14 +714,7 @@ fn zcode_sources() -> Vec<ReportSource> {
     dirs.into_iter()
         .enumerate()
         .flat_map(|(index, path)| {
-            let database = path.join("cli/db/db.sqlite");
-            [
-                exact_file(format!("zcode:{index}:database"), database.clone()),
-                exact_file(
-                    format!("zcode:{index}:wal"),
-                    database.with_file_name("db.sqlite-wal"),
-                ),
-            ]
+            sqlite_sources(format!("zcode:{index}"), path.join("cli/db/db.sqlite"))
         })
         .collect()
 }
@@ -739,6 +733,16 @@ fn exact_file(id: String, path: PathBuf) -> ReportSource {
         path,
         matcher: SourceMatcher::ExactFile,
     }
+}
+
+fn sqlite_sources(id: String, database: PathBuf) -> [ReportSource; 2] {
+    let mut wal_name = database.file_name().unwrap_or_default().to_os_string();
+    wal_name.push("-wal");
+    let wal = database.with_file_name(wal_name);
+    [
+        exact_file(format!("{id}:database"), database),
+        exact_file(format!("{id}:wal"), wal),
+    ]
 }
 
 pub(crate) fn recursive_extensions(
@@ -803,6 +807,7 @@ mod tests {
 
     #[test]
     fn ignores_cached_payload_written_by_different_binary() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([]);
         let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
         let fixture = fs_fixture!({
             "source/usage.jsonl": "{}\n",
@@ -851,6 +856,7 @@ mod tests {
 
     #[test]
     fn reuses_cached_payload_when_sources_are_unchanged() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([]);
         let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
         let fixture = fs_fixture!({
             "source/usage.jsonl": "{}\n",
@@ -889,6 +895,7 @@ mod tests {
 
     #[test]
     fn invalidates_cached_payload_when_sources_change() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([]);
         let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
         let fixture = fs_fixture!({
             "source/usage.jsonl": "{}\n",
@@ -924,6 +931,21 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_source_fingerprint_changes_when_wal_changes() {
+        let fixture = fs_fixture!({
+            "database/state.db": "database",
+            "database/state.db-wal": "wal",
+        });
+        let sources = sqlite_sources("test".to_string(), fixture.path("database/state.db"));
+        let before = compute_source_fingerprint(&sources);
+
+        fs::write(fixture.path("database/state.db-wal"), "wal grew").unwrap();
+        let after = compute_source_fingerprint(&sources);
+
+        assert_ne!(before, after);
+    }
+
+    #[test]
     fn offline_cache_key_uses_embedded_pricing_fingerprint() {
         let shared = SharedArgs {
             offline: true,
@@ -949,6 +971,23 @@ mod tests {
         let parameters = report_parameters("all", "monthly", &shared);
 
         assert_eq!(parameters["modelFilter"], json!(["opus"]));
+    }
+
+    #[test]
+    fn cache_key_changes_with_model_aliases() {
+        let without_aliases = {
+            let _aliases = crate::model_aliases::set_model_aliases_for_tests([]);
+            cache_key("daily", &json!({}), "sources", "pricing")
+        };
+        let with_aliases = {
+            let _aliases = crate::model_aliases::set_model_aliases_for_tests([(
+                "private-model",
+                "canonical-model",
+            )]);
+            cache_key("daily", &json!({}), "sources", "pricing")
+        };
+
+        assert_ne!(without_aliases, with_aliases);
     }
 
     #[test]

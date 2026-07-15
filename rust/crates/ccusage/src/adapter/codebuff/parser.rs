@@ -88,6 +88,7 @@ pub(super) fn load_chat_file(path: &Path) -> Result<Vec<CodebuffEntry>> {
                 cache_creation_input_tokens: usage.cache_creation_input_tokens,
                 cache_read_input_tokens: usage.cache_read_input_tokens,
                 speed: None,
+                cache_creation: None,
             },
             extra_total_tokens: usage.extra_total_tokens,
             dedup_key,
@@ -251,6 +252,7 @@ pub(super) fn parse_usage_object(value: Option<&Value>) -> AssistantUsage {
         cache_creation_input_tokens: usage.cache_creation_input_tokens,
         cache_read_input_tokens: usage.cache_read_input_tokens,
         speed: None,
+        cache_creation: None,
     };
     let (raw_usage, extra_total_tokens) =
         apply_total_token_fallback(raw_usage, usage.extra_total_tokens, total_tokens);

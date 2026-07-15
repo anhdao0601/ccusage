@@ -4,6 +4,8 @@ use crate::{
     types::{Speed, UsageEntry},
 };
 
+const CACHE_CREATE_1H_INPUT_MULTIPLIER: f64 = 2.0;
+
 pub(crate) fn calculate_cost(
     data: &UsageEntry,
     mode: CostMode,
@@ -57,7 +59,10 @@ pub(crate) fn missing_pricing_model_for_token_total(
     }
     let model = model?;
     let pricing = pricing?;
-    pricing.find(model).is_none().then(|| model.to_string())
+    pricing
+        .find(model)
+        .is_none()
+        .then(|| crate::model_aliases::resolve_model_name(model).into_owned())
 }
 
 pub(crate) fn missing_pricing_model_for_candidates(
@@ -73,7 +78,7 @@ pub(crate) fn missing_pricing_model_for_candidates(
     candidates
         .into_iter()
         .all(|candidate| pricing.find(&candidate).is_none())
-        .then(|| model.to_string())
+        .then(|| crate::model_aliases::resolve_model_name(model).into_owned())
 }
 
 fn calculate_cost_from_tokens(
@@ -92,6 +97,19 @@ fn calculate_cost_from_tokens(
     } else {
         1.0
     };
+    let (cache_create_5m_tokens, cache_create_1h_tokens) =
+        if let Some(breakdown) = usage.cache_creation {
+            (
+                breakdown.ephemeral_5m_input_tokens,
+                breakdown.ephemeral_1h_input_tokens,
+            )
+        } else {
+            (usage.cache_creation_input_tokens, 0)
+        };
+    let cache_create_1h_cost = pricing.input * CACHE_CREATE_1H_INPUT_MULTIPLIER;
+    let cache_create_1h_cost_above_200k = pricing
+        .input_above_200k
+        .map(|cost| cost * CACHE_CREATE_1H_INPUT_MULTIPLIER);
     (tiered_cost(usage.input_tokens, pricing.input, pricing.input_above_200k)
         + tiered_cost(
             usage.output_tokens,
@@ -99,9 +117,14 @@ fn calculate_cost_from_tokens(
             pricing.output_above_200k,
         )
         + tiered_cost(
-            usage.cache_creation_input_tokens,
+            cache_create_5m_tokens,
             pricing.cache_create,
             pricing.cache_create_above_200k,
+        )
+        + tiered_cost(
+            cache_create_1h_tokens,
+            cache_create_1h_cost,
+            cache_create_1h_cost_above_200k,
         )
         + tiered_cost(
             usage.cache_read_input_tokens,
@@ -122,4 +145,81 @@ pub(crate) fn tiered_cost(tokens: u64, base: f64, above: Option<f64>) -> f64 {
         }
     }
     tokens as f64 * base
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pricing() -> PricingMap {
+        let mut pricing = PricingMap::default();
+        pricing.load_json(
+            r#"{
+                "test-model": {
+                    "input_cost_per_token": 1.0,
+                    "output_cost_per_token": 10.0,
+                    "cache_creation_input_token_cost": 1.25,
+                    "cache_read_input_token_cost": 0.1,
+                    "input_cost_per_token_above_200k_tokens": 2.0,
+                    "cache_creation_input_token_cost_above_200k_tokens": 1.5
+                }
+            }"#,
+        );
+        pricing
+    }
+
+    #[test]
+    fn prices_cache_creation_breakdown_by_duration() {
+        let usage = crate::TokenUsageRaw {
+            cache_creation_input_tokens: 999,
+            cache_read_input_tokens: 30,
+            cache_creation: Some(crate::CacheCreationRaw {
+                ephemeral_5m_input_tokens: 10,
+                ephemeral_1h_input_tokens: 20,
+            }),
+            ..crate::TokenUsageRaw::default()
+        };
+
+        let cost = calculate_cost_for_usage(
+            Some("test-model"),
+            usage,
+            None,
+            CostMode::Calculate,
+            Some(&pricing()),
+        );
+
+        assert!((cost - 55.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parses_cache_creation_breakdown_from_usage_json() {
+        let usage = serde_json::from_str::<crate::TokenUsageRaw>(
+            r#"{
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 300,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 100,
+                    "ephemeral_1h_input_tokens": 200
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(usage.cache_creation_token_count(), 300);
+    }
+
+    #[test]
+    fn missing_pricing_reports_resolved_model_alias() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([(
+            "private-missing-model",
+            "canonical-missing-model",
+        )]);
+        let pricing = PricingMap::default();
+
+        assert_eq!(
+            missing_pricing_model_for_token_total(Some("private-missing-model"), 1, Some(&pricing),),
+            Some("canonical-missing-model".to_string())
+        );
+    }
 }

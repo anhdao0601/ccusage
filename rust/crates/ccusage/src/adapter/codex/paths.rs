@@ -2,6 +2,9 @@ use std::{env, path::PathBuf};
 
 use crate::{cli_error, fast::FxHashSet, home, Result};
 
+#[cfg(test)]
+pub(crate) static CODEX_HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Sibling of `sessions/` where Codex files older sessions. The TS fork scans
 /// this in addition to `sessions/` (DEFAULT_ARCHIVED_SESSION_SUBDIR); Rust must
 /// too, or it silently drops the bulk of a user's Codex history.
@@ -45,13 +48,9 @@ pub(super) fn codex_home_paths() -> Result<Vec<PathBuf>> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use ccusage_test_support::fs_fixture;
 
     use super::*;
-
-    static CODEX_HOME_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn discovers_both_sessions_and_archived_sessions_like_typescript() {

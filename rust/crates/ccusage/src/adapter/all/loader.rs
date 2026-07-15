@@ -701,7 +701,7 @@ fn filter_daily_summaries_by_date(rows: &mut Vec<UsageSummary>, shared: &SharedA
     });
 }
 
-fn load_codex_rows(
+pub(super) fn load_codex_rows(
     kind: AgentReportKind,
     shared: &SharedArgs,
     pricing: &PricingMap,

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{cli::SharedArgs, parse_tz, LoadedEntry, Result};
+use crate::{cli::SharedArgs, parse_tz, read_files_parallel, LoadedEntry, Result};
 
 use super::{
     parser::{entry_id, parse_session_file},
@@ -23,8 +23,12 @@ fn load_entries_inner(shared: &SharedArgs, custom_path: Option<&str>) -> Result<
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
     for root in paths(custom_path) {
-        for file in collect_session_files(&root)? {
-            for entry in parse_session_file(&file, tz.as_ref())? {
+        let files = collect_session_files(&root)?;
+        let loaded = read_files_parallel(&files, shared.single_thread, |file| {
+            parse_session_file(file, tz.as_ref())
+        });
+        for file_entries in loaded {
+            for entry in file_entries? {
                 if seen.insert(entry_id(&entry)) {
                     entries.push(entry);
                 }

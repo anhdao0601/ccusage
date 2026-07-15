@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::Path};
 
-use crate::{cli::SharedArgs, LoadedEntry, PricingMap, Result};
+use crate::{cli::SharedArgs, read_files_parallel, LoadedEntry, PricingMap, Result};
 
 use super::{
     parser::{read_model_usage_row, to_loaded_entry},
@@ -10,10 +10,14 @@ use super::{
 pub(crate) fn load_entries(shared: &SharedArgs, pricing: &PricingMap) -> Result<Vec<LoadedEntry>> {
     crate::progress::track_usage_load(crate::progress::UsageLoadAgent::ZCode, shared.json, || {
         let tz = crate::parse_tz(shared.timezone.as_deref());
+        let db_paths = database_paths()?;
+        let loaded = read_files_parallel(&db_paths, shared.single_thread, |path| {
+            load_database_entries(path, shared, tz.as_ref(), pricing)
+        });
         let mut entries = Vec::new();
         let mut seen = HashSet::new();
-        for path in database_paths()? {
-            for entry in load_database_entries(&path, shared, tz.as_ref(), pricing) {
+        for db_entries in loaded {
+            for entry in db_entries {
                 if entry
                     .data
                     .message

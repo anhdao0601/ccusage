@@ -267,7 +267,7 @@ fn run_session_id(id: &str, shared: &SharedArgs) -> Result<()> {
                 "timestamp": entry.data.timestamp,
                 "inputTokens": entry.data.message.usage.input_tokens,
                 "outputTokens": entry.data.message.usage.output_tokens,
-                "cacheCreationTokens": entry.data.message.usage.cache_creation_input_tokens,
+                "cacheCreationTokens": entry.data.message.usage.cache_creation_token_count(),
                 "cacheReadTokens": entry.data.message.usage.cache_read_input_tokens,
                 "model": entry.data.message.model.as_deref().unwrap_or("unknown"),
                 "costUSD": entry.data.cost_usd.unwrap_or(0.0),
@@ -316,7 +316,7 @@ fn run_session_id(id: &str, shared: &SharedArgs) -> Result<()> {
                 .unwrap_or_else(|| "unknown".to_string()),
             format_number(entry.data.message.usage.input_tokens),
             format_number(entry.data.message.usage.output_tokens),
-            format_number(entry.data.message.usage.cache_creation_input_tokens),
+            format_number(entry.data.message.usage.cache_creation_token_count()),
             format_number(entry.data.message.usage.cache_read_input_tokens),
             format_currency(entry.data.cost_usd.unwrap_or(0.0)),
         ]);

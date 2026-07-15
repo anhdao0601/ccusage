@@ -14,7 +14,7 @@ pub(crate) fn non_empty_json_string(value: Option<&Value>) -> Option<String> {
 pub(crate) fn total_usage_tokens(usage: TokenUsageRaw) -> u64 {
     usage.input_tokens
         + usage.output_tokens
-        + usage.cache_creation_input_tokens
+        + usage.cache_creation_token_count()
         + usage.cache_read_input_tokens
 }
 
@@ -49,6 +49,7 @@ mod tests {
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 25,
                 speed: None,
+                cache_creation: None,
             },
             0,
             175,
@@ -69,6 +70,7 @@ mod tests {
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 25,
                 speed: None,
+                cache_creation: None,
             },
             0,
             200,
@@ -76,5 +78,24 @@ mod tests {
 
         assert_eq!(usage.output_tokens, 50);
         assert_eq!(extra_total_tokens, 25);
+    }
+
+    #[test]
+    fn totals_duration_specific_cache_creation_tokens() {
+        let usage: TokenUsageRaw = serde_json::from_str(
+            r#"{
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_creation_input_tokens": 999,
+                "cache_read_input_tokens": 25,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 30,
+                    "ephemeral_1h_input_tokens": 20
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(total_usage_tokens(usage), 225);
     }
 }

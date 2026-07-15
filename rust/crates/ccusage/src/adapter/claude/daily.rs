@@ -359,7 +359,7 @@ fn is_valid_daily_usage_entry(data: &DailyUsageEntry) -> bool {
 fn daily_usage_token_total(entry: &DailyLoadedEntry) -> u64 {
     entry.usage.input_tokens
         + entry.usage.output_tokens
-        + entry.usage.cache_creation_input_tokens
+        + entry.usage.cache_creation_token_count()
         + entry.usage.cache_read_input_tokens
 }
 
@@ -474,14 +474,16 @@ impl DailyAccumulator {
         self.counts.add_usage(entry.usage);
         self.cost += entry.cost;
         if let Some(model) = &entry.model {
-            let index = if let Some(index) = self.breakdown_indexes.get(model.as_str()) {
+            let model = crate::model_aliases::resolve_model_name(model);
+            let index = if let Some(index) = self.breakdown_indexes.get(model.as_ref()) {
                 *index
             } else {
                 let index = self.breakdowns.len();
-                self.breakdown_indexes.insert(model.clone(), index);
-                self.models.push(model.clone());
+                let owned = model.into_owned();
+                self.breakdown_indexes.insert(owned.clone(), index);
+                self.models.push(owned.clone());
                 self.breakdowns.push(ModelBreakdown {
-                    model_name: model.clone(),
+                    model_name: owned,
                     ..ModelBreakdown::default()
                 });
                 index
@@ -489,7 +491,7 @@ impl DailyAccumulator {
             let breakdown = &mut self.breakdowns[index];
             breakdown.input_tokens += entry.usage.input_tokens;
             breakdown.output_tokens += entry.usage.output_tokens;
-            breakdown.cache_creation_tokens += entry.usage.cache_creation_input_tokens;
+            breakdown.cache_creation_tokens += entry.usage.cache_creation_token_count();
             breakdown.cache_read_tokens += entry.usage.cache_read_input_tokens;
             breakdown.cost += entry.cost;
             if entry.missing_pricing_model.is_some() {
@@ -527,7 +529,9 @@ impl DailyAccumulator {
 mod tests {
     use std::sync::Arc;
 
-    use super::{is_valid_daily_usage_entry, push_deduped_daily_entry, DailyLoadedEntry};
+    use super::{
+        is_valid_daily_usage_entry, push_deduped_daily_entry, DailyAccumulator, DailyLoadedEntry,
+    };
     use crate::TokenUsageRaw;
 
     #[test]
@@ -646,6 +650,40 @@ mod tests {
         assert!(!deduped[0].is_sidechain.unwrap());
     }
 
+    #[test]
+    fn daily_summary_merges_configured_model_aliases() {
+        let _aliases = crate::model_aliases::set_model_aliases_for_tests([
+            ("private-claude-a", "claude-opus-4-8"),
+            ("private-claude-b", "claude-opus-4-8"),
+        ]);
+        let mut accumulator = DailyAccumulator::default();
+        let mut first = daily_loaded_entry(DailyEntryFixture {
+            message_id: "msg-a",
+            request_id: "req-a",
+            is_sidechain: false,
+            cache_read_tokens: 20,
+            output_tokens: 10,
+        });
+        first.model = Some("private-claude-a".to_string());
+        let mut second = daily_loaded_entry(DailyEntryFixture {
+            message_id: "msg-b",
+            request_id: "req-b",
+            is_sidechain: false,
+            cache_read_tokens: 30,
+            output_tokens: 15,
+        });
+        second.model = Some("private-claude-b".to_string());
+
+        accumulator.add_entry(&first);
+        accumulator.add_entry(&second);
+        let summary = accumulator.into_summary();
+
+        assert_eq!(summary.models_used, vec!["claude-opus-4-8"]);
+        assert_eq!(summary.model_breakdowns.len(), 1);
+        assert_eq!(summary.model_breakdowns[0].cache_read_tokens, 50);
+        assert_eq!(summary.model_breakdowns[0].output_tokens, 25);
+    }
+
     struct DailyEntryFixture {
         message_id: &'static str,
         request_id: &'static str,
@@ -664,6 +702,7 @@ mod tests {
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: fixture.cache_read_tokens,
                 speed: None,
+                cache_creation: None,
             },
             cost: 0.0,
             model: Some("claude-sonnet-4-20250514".to_string()),

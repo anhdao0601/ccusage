@@ -17,6 +17,8 @@ pub(crate) use aggregate::{aggregate_events, filter_events_by_date, load_groups}
 pub(crate) use loader::load_codex_events;
 #[cfg(test)]
 pub(crate) use loader::load_codex_events_from_directory;
+#[cfg(test)]
+pub(crate) use paths::CODEX_HOME_LOCK;
 pub(crate) use report::{
     calculate_codex_model_cost, calculate_group_cost, codex_model_missing_pricing,
     non_cached_input_tokens,
@@ -107,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_matching_grouped_codex_usage_events_from_distinct_sessions() {
+    fn dedupes_matching_grouped_codex_usage_events_across_session_files() {
         let usage_line = r#"{"timestamp":"2026-01-02T00:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5","last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#;
         let fixture = fs_fixture!({
             "sessions/session-a.jsonl": usage_line,
@@ -124,10 +126,10 @@ mod tests {
 
         assert_eq!(groups.len(), 1);
         let group = groups.get("2026-01-02").unwrap();
-        assert_eq!(group.input_tokens, 200);
-        assert_eq!(group.cached_input_tokens, 20);
-        assert_eq!(group.output_tokens, 100);
-        assert_eq!(group.total_tokens, 300);
+        assert_eq!(group.input_tokens, 100);
+        assert_eq!(group.cached_input_tokens, 10);
+        assert_eq!(group.output_tokens, 50);
+        assert_eq!(group.total_tokens, 150);
     }
 
     #[test]

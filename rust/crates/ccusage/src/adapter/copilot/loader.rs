@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     calculate_cost_for_usage, cli::CostMode, format_date_tz, missing_pricing_model_for_usage,
-    parse_tz, LoadedEntry, Result, TokenUsageRaw, UsageEntry, UsageMessage,
+    parse_tz, read_files_parallel, LoadedEntry, Result, TokenUsageRaw, UsageEntry, UsageMessage,
 };
 
 pub(crate) fn load_entries(
@@ -27,9 +27,13 @@ fn load_entries_inner(
     pricing: &crate::PricingMap,
 ) -> Result<Vec<LoadedEntry>> {
     let tz = parse_tz(shared.timezone.as_deref());
+    let files = paths()?;
+    let loaded = read_files_parallel(&files, shared.single_thread, |path| {
+        read_otel_file(path, tz.as_ref(), shared.mode, pricing)
+    });
     let mut entries = Vec::new();
-    for path in paths()? {
-        entries.extend(read_otel_file(&path, tz.as_ref(), shared.mode, pricing)?);
+    for file_entries in loaded {
+        entries.extend(file_entries?);
     }
     entries.sort_by_key(|entry| entry.timestamp);
     Ok(entries)
@@ -59,6 +63,7 @@ fn usage_entry_to_loaded(
         cache_creation_input_tokens: entry.cache_creation_tokens,
         cache_read_input_tokens: entry.cache_read_tokens,
         speed: None,
+        cache_creation: None,
     };
     let cost_usage = TokenUsageRaw {
         output_tokens: entry.output_tokens + entry.reasoning_output_tokens,

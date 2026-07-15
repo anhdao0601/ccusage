@@ -36,28 +36,31 @@ fn test_agent_rows(agent: &'static str) -> AgentRows {
     }
 }
 
+struct EnvRestore {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvRestore {
+    fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+        let previous = std::env::var_os(key);
+        std::env::set_var(key, value);
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(value) => std::env::set_var(self.key, value),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
+
 #[test]
 fn caches_agent_rows_per_agent_and_invalidates_on_source_change() {
-    struct EnvRestore {
-        key: &'static str,
-        previous: Option<std::ffi::OsString>,
-    }
-    impl EnvRestore {
-        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
-            let previous = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, previous }
-        }
-    }
-    impl Drop for EnvRestore {
-        fn drop(&mut self) {
-            match self.previous.take() {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
-    }
-
+    let _aliases = crate::model_aliases::set_model_aliases_for_tests([]);
     let _cache_guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
     let fixture = ccusage_test_support::fs_fixture!({
         "gemini/chats/session-a.json": "{}",
@@ -129,6 +132,66 @@ fn caches_agent_rows_per_agent_and_invalidates_on_source_change() {
     .unwrap();
 
     assert_eq!(loads, 2, "changed gemini sources must invalidate the cache");
+}
+
+#[test]
+fn date_filtered_codex_rows_dedupe_after_model_alias_resolution() {
+    let _home_lock = crate::adapter::codex::CODEX_HOME_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let _aliases = crate::model_aliases::set_model_aliases_for_tests([("private-gpt", "gpt-5.5")]);
+    let first = r#"{"timestamp":"2026-07-15T00:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"private-gpt","last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#;
+    let second = first.replace("private-gpt", "gpt-5.5");
+    let fixture = ccusage_test_support::fs_fixture!({
+        "sessions/a.jsonl": first,
+        "sessions/b.jsonl": second,
+    });
+    let _home = EnvRestore::set_path("CODEX_HOME", fixture.root());
+    let shared = crate::cli::SharedArgs {
+        since: Some("20260715".to_string()),
+        until: Some("20260715".to_string()),
+        offline: true,
+        ..crate::cli::SharedArgs::default()
+    };
+
+    let rows = load_codex_rows(
+        AgentReportKind::Daily,
+        &shared,
+        &PricingMap::load_embedded(),
+    )
+    .unwrap();
+
+    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(rows.rows[0].total_tokens, 150);
+}
+
+#[test]
+fn date_filtered_codex_session_rows_keep_distinct_sessions() {
+    let _home_lock = crate::adapter::codex::CODEX_HOME_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let usage = r#"{"timestamp":"2026-07-15T00:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5.5","last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#;
+    let fixture = ccusage_test_support::fs_fixture!({
+        "sessions/a.jsonl": usage,
+        "sessions/b.jsonl": usage,
+    });
+    let _home = EnvRestore::set_path("CODEX_HOME", fixture.root());
+    let shared = crate::cli::SharedArgs {
+        since: Some("20260715".to_string()),
+        until: Some("20260715".to_string()),
+        offline: true,
+        ..crate::cli::SharedArgs::default()
+    };
+
+    let rows = load_codex_rows(
+        AgentReportKind::Session,
+        &shared,
+        &PricingMap::load_embedded(),
+    )
+    .unwrap();
+
+    assert_eq!(rows.rows.len(), 2);
+    assert!(rows.rows.iter().all(|row| row.total_tokens == 150));
 }
 
 #[test]
