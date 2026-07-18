@@ -58,6 +58,8 @@ fn read_codex_session_files_with_index(
     #[cfg(not(test))]
     {
         let mut index = session_index::read_session_index();
+        let mut index_changed =
+            session_index::remove_missing_entries_under_root(&mut index, sessions_dir, files);
         let mut loaded_files = Vec::new();
         loaded_files.resize_with(files.len(), || None);
         let mut changed_files = Vec::new();
@@ -93,7 +95,6 @@ fn read_codex_session_files_with_index(
             read_changed_codex_session_files_parallel(sessions_dir, &changed_files)
         };
 
-        let mut index_changed = false;
         for (file_index, key, size, mtime_ms, events) in parsed_files {
             loaded_files[file_index] = Some(events.clone());
             index.insert(

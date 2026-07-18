@@ -16,6 +16,8 @@ use crate::{
 const CACHE_DIRECTORY_NAME: &str = "ccusage";
 const REPORT_CACHE_SUBDIR: &str = "reports";
 const REPORT_CACHE_SCHEMA_VERSION: u64 = 3;
+const MAX_REPORT_CACHE_ENTRIES: usize = 128;
+const MAX_REPORT_CACHE_BYTES: u64 = 32 * 1024 * 1024;
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x100000001b3;
 
@@ -175,6 +177,20 @@ fn read_report_cache<T: DeserializeOwned>(key: &str) -> Option<T> {
 }
 
 fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
+    write_report_cache_with_limits(
+        key,
+        payload,
+        MAX_REPORT_CACHE_ENTRIES,
+        MAX_REPORT_CACHE_BYTES,
+    );
+}
+
+fn write_report_cache_with_limits<T: Serialize>(
+    key: &str,
+    payload: &T,
+    max_entries: usize,
+    max_bytes: u64,
+) {
     let Some(path) = report_cache_path(key) else {
         return;
     };
@@ -193,6 +209,15 @@ fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
     let Ok(bytes) = serde_json::to_vec(&envelope) else {
         return;
     };
+    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _write_guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if u64::try_from(bytes.len()).map_or(true, |size| size > max_bytes) {
+        let _ = fs::remove_file(&path);
+        prune_report_cache_dir(parent, None, max_entries, max_bytes);
+        return;
+    }
     // Unique per write: concurrent same-key writers (per-agent loader threads,
     // parallel tests) must never share a temp file, or the atomic rename can
     // publish a half-written entry.
@@ -200,9 +225,61 @@ fn write_report_cache<T: Serialize>(key: &str, payload: &T) {
     let sequence = WRITE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let temp_path = path.with_extension(format!("json.{}.{sequence}.tmp", std::process::id()));
     if fs::write(&temp_path, bytes).is_ok() {
-        let _ = fs::rename(&temp_path, path);
+        let _ = fs::rename(&temp_path, &path);
     }
     let _ = fs::remove_file(temp_path);
+    prune_report_cache_dir(parent, Some(&path), max_entries, max_bytes);
+}
+
+fn prune_report_cache_dir(
+    directory: &Path,
+    protected_path: Option<&Path>,
+    max_entries: usize,
+    max_bytes: u64,
+) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    let mut files = entries
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                return None;
+            }
+            let metadata = fs::metadata(&path).ok()?;
+            if !metadata.is_file() {
+                return None;
+            }
+            Some((
+                path,
+                metadata.modified().unwrap_or(UNIX_EPOCH),
+                metadata.len(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut remaining_entries = files.len();
+    let mut remaining_bytes = files
+        .iter()
+        .fold(0_u64, |total, (_, _, size)| total.saturating_add(*size));
+
+    files.sort_by(|left, right| {
+        let left_is_protected = protected_path.is_some_and(|path| path == left.0.as_path());
+        let right_is_protected = protected_path.is_some_and(|path| path == right.0.as_path());
+        left_is_protected
+            .cmp(&right_is_protected)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.0.cmp(&right.0))
+    });
+
+    for (path, _, size) in files {
+        if remaining_entries <= max_entries && remaining_bytes <= max_bytes {
+            break;
+        }
+        if fs::remove_file(path).is_ok() {
+            remaining_entries = remaining_entries.saturating_sub(1);
+            remaining_bytes = remaining_bytes.saturating_sub(size);
+        }
+    }
 }
 
 fn report_cache_path(key: &str) -> Option<PathBuf> {
@@ -781,6 +858,7 @@ fn recursive_suffixes(
 mod tests {
     use super::*;
     use ccusage_test_support::fs_fixture;
+    use std::time::Duration;
 
     struct EnvRestore {
         key: &'static str,
@@ -988,6 +1066,48 @@ mod tests {
         };
 
         assert_ne!(without_aliases, with_aliases);
+    }
+
+    #[test]
+    fn prunes_oldest_report_cache_files_to_entry_and_byte_limits() {
+        let fixture = fs_fixture!({
+            "reports/old.json": "12345",
+            "reports/middle.json": "12345",
+            "reports/new.json": "12345",
+        });
+        let reports = fixture.path("reports");
+        for (name, seconds) in [("old.json", 1), ("middle.json", 2), ("new.json", 3)] {
+            let file = fs::File::options()
+                .write(true)
+                .open(reports.join(name))
+                .unwrap();
+            file.set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)),
+            )
+            .unwrap();
+        }
+
+        prune_report_cache_dir(&reports, Some(&reports.join("new.json")), 2, 9);
+
+        assert!(!reports.join("old.json").exists());
+        assert!(!reports.join("middle.json").exists());
+        assert!(reports.join("new.json").exists());
+        let remaining_bytes = fs::read_dir(&reports)
+            .unwrap()
+            .map(|entry| entry.unwrap().metadata().unwrap().len())
+            .sum::<u64>();
+        assert!(remaining_bytes <= 9);
+    }
+
+    #[test]
+    fn does_not_persist_oversized_report_cache_entry() {
+        let _guard = crate::pricing_cache::XDG_CACHE_HOME_LOCK.lock().unwrap();
+        let fixture = fs_fixture!({});
+        let _env = EnvRestore::set_path("XDG_CACHE_HOME", fixture.root());
+
+        write_report_cache_with_limits("oversized", &"x".repeat(1_024), 8, 128);
+
+        assert!(!report_cache_path("oversized").unwrap().exists());
     }
 
     #[test]
