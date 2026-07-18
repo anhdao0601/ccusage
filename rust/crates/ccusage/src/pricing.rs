@@ -792,6 +792,22 @@ impl PricingMap {
                 fast_multiplier: 1.0,
             },
         );
+        // Source: https://www.kimi.com/resources/kimi-k2-7-code-pricing
+        self.entries.insert(
+            "moonshot/kimi-k2.7-code".to_string(),
+            Pricing {
+                input: 0.95e-6,
+                output: 4e-6,
+                cache_create: 1.1875e-6,
+                cache_read: 0.19e-6,
+                cache_read_explicit: true,
+                input_above_200k: None,
+                output_above_200k: None,
+                cache_create_above_200k: None,
+                cache_read_above_200k: None,
+                fast_multiplier: 1.0,
+            },
+        );
         for (model, input, output, cache_read) in [
             ("glm-4.5", 0.6e-6, 2.2e-6, 0.11e-6),
             ("glm-4.5-x", 2.2e-6, 8.9e-6, 0.45e-6),
@@ -928,6 +944,8 @@ impl PricingMap {
             .insert("moonshot/kimi-k2.5".to_string(), 262_144);
         self.context_limits
             .insert("moonshot/kimi-k2.6".to_string(), 262_144);
+        self.context_limits
+            .insert("moonshot/kimi-k2.7-code".to_string(), 262_144);
         for model in ["zai/glm-5.2", "zai/glm-5.2[1m]"] {
             self.context_limits.insert(model.to_string(), 1_000_000);
         }
@@ -1180,6 +1198,13 @@ mod tests {
     }
 
     #[test]
+    fn loads_embedded_claude_sonnet_5_pricing() {
+        let pricing = PricingMap::load_embedded();
+
+        assert!(pricing.find("claude-sonnet-5").is_some());
+    }
+
+    #[test]
     fn offline_resolves_models_only_in_embedded_models_dev() {
         let offline = PricingMap::load_embedded();
         let model = embedded_models_dev_pricing()
@@ -1227,6 +1252,19 @@ mod tests {
         assert!(kimi_k26.cache_read_explicit);
         assert_eq!(pricing.context_limit("moonshot/kimi-k2.5"), Some(262_144));
         assert_eq!(pricing.context_limit("moonshot/kimi-k2.6"), Some(262_144));
+    }
+
+    #[test]
+    fn embedded_pricing_resolves_kimi_k27_hugging_face_model_path() {
+        let pricing = PricingMap::load_embedded();
+        let model = "/data/models/hf/moonshotai__Kimi-K2.7-Code";
+        let kimi_k27 = pricing.find(model).unwrap();
+
+        assert_eq!(kimi_k27.input, 0.95e-6);
+        assert_eq!(kimi_k27.output, 4e-6);
+        assert_eq!(kimi_k27.cache_read, 0.19e-6);
+        assert!(kimi_k27.cache_read_explicit);
+        assert_eq!(pricing.context_limit(model), Some(262_144));
     }
 
     #[test]
