@@ -5,7 +5,7 @@ Welcome to ccusage! This guide will help you get up and running with analyzing y
 ## Prerequisites
 
 - At least one supported coding CLI installed and used
-- Bun 1.3+ recommended for direct execution
+- Bun 1.4.4+ recommended for direct execution (older Bun is affected by CVE-2026-111497)
 
 ## Quick Start
 

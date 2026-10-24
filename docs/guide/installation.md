@@ -130,7 +130,7 @@ pnpm run format
 ### Bun
 
 - **Minimum**: Bun 1.3+
-- **Recommended**: Latest stable release
+- **Recommended**: 1.4.4 or newer (older releases are affected by CVE-2026-111497); latest stable is best
 - Recommended for `bunx ccusage` and for the fastest warm startup
 
 ## Verification
